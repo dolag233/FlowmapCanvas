@@ -1,0 +1,74 @@
+QMainWindow {
+    background-color: #2D2D2D;
+}
+
+QMenuBar {
+    background-color: #353535;
+    color: #CCCCCC;
+}
+
+QMenuBar::item:selected {
+    background-color: #454545;
+}
+
+QDockWidget {
+    titlebar-close-icon: url(none);
+    titlebar-normal-icon: url(none);
+    background: #353535;
+    border: 1px solid #454545;
+}
+
+QScrollBar:vertical {
+    background: #353535;
+    width: 12px;
+}
+
+QStatusBar {
+    background-color: #353535;
+    color: #A0A0A0;
+    padding: 2px;
+}
+
+QSlider::groove:horizontal {
+    height: 6px;
+    background: #454545;
+}
+
+QSlider::handle:horizontal {
+    background: #5E5E5E;
+    width: 16px;
+    margin: -4px 0;
+    border-radius: 4px;
+}
+
+QSpinBox, QDoubleSpinBox {
+    background: #454545;
+    color: #FFFFFF;
+    border: 1px solid #5E5E5E;
+    padding: 2px;
+}
+
+QGraphicsView {
+    background: #404040;
+    border: 1px solid #454545;
+}
+
+QLabel {
+    color: #CCCCCC;
+}
+
+QPushButton {
+    background: #5E5E5E;
+    color: #FFFFFF;
+    border: none;
+    padding: 5px 12px;
+    min-width: 60px;
+}
+
+QPushButton:hover {
+    background: #6E6E6E;
+}
+
+QPushButton:pressed {
+    background: #4E4E4E;
+}
