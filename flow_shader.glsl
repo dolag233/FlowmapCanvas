@@ -149,8 +149,8 @@ void main()
             (TexCoords.y - u_previewPos.y) / u_previewSize.y
         );
 
-        // 应用缩放和偏移
-        previewTexCoord = previewTexCoord / u_previewScale - u_previewOffset;
+        // 只应用偏移，不再应用额外的缩放
+        previewTexCoord = previewTexCoord - u_previewOffset;
 
         if (previewTexCoord.x >= 0.0 && previewTexCoord.x <= 1.0 &&
             previewTexCoord.y >= 0.0 && previewTexCoord.y <= 1.0) {

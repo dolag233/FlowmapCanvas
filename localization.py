@@ -94,8 +94,17 @@ TRANSLATIONS = {
     "coordinate_system": {"zh_CN": "坐标系模式:", "en_US": "Coordinate System:"},
     "choose_fill_color": {"zh_CN": "选择填充颜色", "en_US": "Choose Fill Color"},
     "select_background": {"zh_CN": "选择底图", "en_US": "Select Background"},
-    "image_files": {"zh_CN": "图像文件 (*.png *.jpg *.jpeg)", "en_US": "Image files (*.png *.jpg *.jpeg)"},
+    "image_files": {"zh_CN": "图像文件 (*.png *.jpg *.jpeg *.bmp *.tga *.tif *.tiff)", "en_US": "Image files (*.png *.jpg *.jpeg *.bmp *.tga *.tif *.tiff)"},
     "tga_files": {"zh_CN": "TGA文件 (*.tga)", "en_US": "TGA files (*.tga)"},
+    "png_files": {"zh_CN": "PNG文件 (*.png)", "en_US": "PNG files (*.png)"},
+    "jpg_files": {"zh_CN": "JPEG文件 (*.jpg *.jpeg)", "en_US": "JPEG files (*.jpg *.jpeg)"},
+    "bmp_files": {"zh_CN": "BMP文件 (*.bmp)", "en_US": "BMP files (*.bmp)"},
+    "custom_size": {"zh_CN": "自定义", "en_US": "Custom"},
+    "width_label": {"zh_CN": "宽度:", "en_US": "Width:"},
+    "height_label": {"zh_CN": "高度:", "en_US": "Height:"},
+    "preset_resolution": {"zh_CN": "预设分辨率:", "en_US": "Preset Resolution:"},
+    "lock_aspect_ratio": {"zh_CN": "锁定长宽比", "en_US": "Lock Aspect Ratio"},
+    "other_settings": {"zh_CN": "其他设置", "en_US": "Other Settings"},
     
     # 错误消息
     "opengl_error": {"zh_CN": "错误：OpenGL 3.3上下文初始化失败", "en_US": "Error: OpenGL 3.3 Context Initialization Failed"},

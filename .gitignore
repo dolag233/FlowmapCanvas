@@ -5,3 +5,4 @@
 /build/FlowmapCanvas
 /dist
 *.spec
+app_settings.json

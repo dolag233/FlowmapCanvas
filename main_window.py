@@ -267,61 +267,194 @@ class MainWindow(QMainWindow):
 
     # 实现导入方法
     def import_background(self):
-        path, _ = QFileDialog.getOpenFileName(self, translator.tr("select_background"), '', translator.tr("image_files"))
+        """处理导入背景图像的功能"""
+        # 设置支持的图片格式过滤器
+        image_filter = translator.tr("image_files")
+        path, _ = QFileDialog.getOpenFileName(self, translator.tr("select_background"), '', image_filter)
         if path:
             self.canvas_widget.load_base_image(path)
             self.status_bar.showMessage(translator.tr("background_loaded", path=path), 3000)
 
     def export_flowmap(self):
-        path, _ = QFileDialog.getSaveFileName(self, translator.tr("export_flowmap"), '', translator.tr("tga_files"))
+        """处理导出流动图的功能，支持多种格式"""
+        # 创建带有过滤器的文件对话框
+        image_filter = f"{translator.tr('tga_files')};;{translator.tr('png_files')};;{translator.tr('jpg_files')};;{translator.tr('bmp_files')}"
+        path, selected_filter = QFileDialog.getSaveFileName(self, translator.tr("export_flowmap"), '', image_filter)
         if not path:
             return
 
-        from PyQt5.QtWidgets import QInputDialog, QComboBox, QDialog, QVBoxLayout, QLabel, QDialogButtonBox
-        
+        from PyQt5.QtWidgets import QInputDialog, QComboBox, QDialog, QVBoxLayout, QLabel, QDialogButtonBox, QHBoxLayout, QSpinBox, QCheckBox
+
         # 创建自定义对话框
         dialog = QDialog(self)
         dialog.setWindowTitle(translator.tr("export_settings"))
+        dialog.setMinimumWidth(350)  # 设置最小宽度，避免对话框太窄
         layout = QVBoxLayout()
         
-        # 分辨率选择
-        res_label = QLabel(translator.tr("export_resolution"))
-        layout.addWidget(res_label)
+        # 获取当前纹理大小
+        current_width, current_height = self.canvas_widget.texture_size
         
-        res_combo = QComboBox()
-        sizes = ['512x512', '1024x1024', '2048x2048', '4096x4096']
-        res_combo.addItems(sizes)
+        # 计算原始纹理宽高比
+        original_aspect_ratio = current_width / current_height
         
-        # 默认选择当前纹理大小或1024
-        current_size = self.canvas_widget.texture_size
-        default_index = 1  # 默认1024x1024
+        # 创建分辨率分组框
+        res_group = QGroupBox(translator.tr("export_resolution"))
+        res_layout = QVBoxLayout()
+        res_group.setLayout(res_layout)
         
-        if current_size == 512:
-            default_index = 0
-        elif current_size == 2048:
-            default_index = 2
-        elif current_size == 4096:
-            default_index = 3
-            
-        res_combo.setCurrentIndex(default_index)
-        layout.addWidget(res_combo)
+        # 添加预设分辨率选择框
+        preset_layout = QHBoxLayout()
+        preset_label = QLabel(translator.tr("preset_resolution"))
+        preset_label.setFixedWidth(100)  # 固定标签宽度，使UI整齐
+        
+        preset_combo = QComboBox()
+        presets = [translator.tr("custom_size"), '512x512', '1024x1024', '2048x2048', '4096x4096']
+        preset_combo.addItems(presets)
+        
+        preset_layout.addWidget(preset_label)
+        preset_layout.addWidget(preset_combo)
+        res_layout.addLayout(preset_layout)
+        
+        # 创建宽高输入区域
+        dims_layout = QHBoxLayout()
+        
+        # 宽度输入框
+        width_label = QLabel(translator.tr("width_label"))
+        width_label.setFixedWidth(50)
+        width_spinbox = QSpinBox()
+        width_spinbox.setRange(1, 8192)
+        width_spinbox.setValue(current_width)
+        width_spinbox.setSingleStep(1)
+        width_spinbox.setMinimumWidth(80)
+        
+        # 高度输入框
+        height_label = QLabel(translator.tr("height_label"))
+        height_label.setFixedWidth(50)
+        height_spinbox = QSpinBox()
+        height_spinbox.setRange(1, 8192)
+        height_spinbox.setValue(current_height)
+        height_spinbox.setSingleStep(1)
+        height_spinbox.setMinimumWidth(80)
+        
+        # 添加到水平布局
+        dims_layout.addWidget(width_label)
+        dims_layout.addWidget(width_spinbox)
+        dims_layout.addWidget(height_label)
+        dims_layout.addWidget(height_spinbox)
+        
+        res_layout.addLayout(dims_layout)
+        
+        # 添加锁定长宽比复选框 - 使用水平布局使复选框位于中间
+        lock_layout = QHBoxLayout()
+        aspect_lock_checkbox = QCheckBox(translator.tr("lock_aspect_ratio"))
+        # 如果是自定义尺寸，默认选中锁定长宽比
+        aspect_lock_checkbox.setChecked(True)
+        lock_layout.addStretch(1)
+        lock_layout.addWidget(aspect_lock_checkbox)
+        lock_layout.addStretch(1)
+        res_layout.addLayout(lock_layout)
+        
+        # 添加分辨率组到主布局
+        layout.addWidget(res_group)
+        
+        # 根据当前分辨率设置选择框的默认值
+        if current_width == current_height:
+            if current_width == 512:
+                preset_combo.setCurrentIndex(1)
+            elif current_width == 1024:
+                preset_combo.setCurrentIndex(2)
+            elif current_width == 2048:
+                preset_combo.setCurrentIndex(3)
+            elif current_width == 4096:
+                preset_combo.setCurrentIndex(4)
+            else:
+                preset_combo.setCurrentIndex(0)  # 自定义
+        else:
+            preset_combo.setCurrentIndex(0)  # 自定义
+        
+        # 创建其他设置组
+        other_group = QGroupBox(translator.tr("other_settings"))
+        other_layout = QVBoxLayout()
+        other_group.setLayout(other_layout)
         
         # 插值方法选择
+        interp_layout = QHBoxLayout()
         interp_label = QLabel(translator.tr("scale_interpolation"))
-        layout.addWidget(interp_label)
+        interp_label.setFixedWidth(130)
         
         interp_combo = QComboBox()
         interp_combo.addItems([translator.tr("bilinear"), translator.tr("nearest_neighbor")])
-        layout.addWidget(interp_combo)
+        
+        interp_layout.addWidget(interp_label)
+        interp_layout.addWidget(interp_combo)
+        other_layout.addLayout(interp_layout)
         
         # 添加API模式选择
+        api_layout = QHBoxLayout()
         api_label = QLabel(translator.tr("coordinate_system"))
-        layout.addWidget(api_label)
+        api_label.setFixedWidth(130)
         
         api_combo = QComboBox()
         api_combo.addItems(["OpenGL", "DirectX"])
         api_combo.setCurrentIndex(0)  # 默认OpenGL
-        layout.addWidget(api_combo)
+        
+        api_layout.addWidget(api_label)
+        api_layout.addWidget(api_combo)
+        other_layout.addLayout(api_layout)
+        
+        # 添加其他设置组到主布局
+        layout.addWidget(other_group)
+        
+        # 当调整输入值时保持长宽比
+        def update_height_from_width():
+            if aspect_lock_checkbox.isChecked() and preset_combo.currentIndex() == 0:
+                # 根据宽高比计算新的高度
+                new_width = width_spinbox.value()
+                new_height = int(round(new_width / original_aspect_ratio))
+                
+                # 避免递归调用
+                height_spinbox.blockSignals(True)
+                height_spinbox.setValue(new_height)
+                height_spinbox.blockSignals(False)
+                
+        def update_width_from_height():
+            if aspect_lock_checkbox.isChecked() and preset_combo.currentIndex() == 0:
+                # 根据宽高比计算新的宽度
+                new_height = height_spinbox.value()
+                new_width = int(round(new_height * original_aspect_ratio))
+                
+                # 避免递归调用
+                width_spinbox.blockSignals(True)
+                width_spinbox.setValue(new_width)
+                width_spinbox.blockSignals(False)
+        
+        # 连接信号
+        width_spinbox.valueChanged.connect(update_height_from_width)
+        height_spinbox.valueChanged.connect(update_width_from_height)
+        
+        # 切换预设分辨率时的处理
+        def on_preset_changed(index):
+            # 调整数值框信号状态
+            width_spinbox.blockSignals(True)
+            height_spinbox.blockSignals(True)
+            
+            if index == 0:  # 自定义
+                # 恢复为纹理原始尺寸
+                width_spinbox.setValue(current_width)
+                height_spinbox.setValue(current_height)
+                aspect_lock_checkbox.setEnabled(True)  # 启用长宽比锁定
+            else:
+                # 当选择预设尺寸时，宽高相等（正方形贴图）
+                size = int(preset_combo.currentText().split('x')[0])
+                width_spinbox.setValue(size)
+                height_spinbox.setValue(size)
+                aspect_lock_checkbox.setEnabled(False)  # 禁用长宽比锁定（因为预设总是正方形）
+            
+            # 恢复信号连接
+            width_spinbox.blockSignals(False)
+            height_spinbox.blockSignals(False)
+            
+        preset_combo.currentIndexChanged.connect(on_preset_changed)
         
         # 按钮
         button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -329,12 +462,15 @@ class MainWindow(QMainWindow):
         button_box.rejected.connect(dialog.reject)
         layout.addWidget(button_box)
         
+        # 完成对话框设置
         dialog.setLayout(layout)
         
         # 显示对话框
         if dialog.exec_() == QDialog.Accepted:
-            size_text = res_combo.currentText()
-            size = tuple(map(int, size_text.split('x')))
+            # 获取用户设置的分辨率
+            width = width_spinbox.value()
+            height = height_spinbox.value()
+            target_size = (width, height)
             
             interp_method = interp_combo.currentText()
             use_bilinear = interp_method == translator.tr("bilinear")
@@ -347,12 +483,16 @@ class MainWindow(QMainWindow):
             self.canvas_widget.set_graphics_api_mode(api_mode)
             
             # 导出
-            self.canvas_widget.export_to_tga(path, size, use_bilinear)
+            self.canvas_widget.export_flowmap(path, target_size, use_bilinear)
             
             # 导出后恢复原来的API模式
             self.canvas_widget.set_graphics_api_mode(original_api_mode)
             
-            self.status_bar.showMessage(translator.tr("flowmap_exported", path=path, res=size_text, interp=interp_method, api=api_mode), 5000)
+            self.status_bar.showMessage(translator.tr("flowmap_exported", 
+                                                     path=path, 
+                                                     res=f"{width}x{height}", 
+                                                     interp=interp_method, 
+                                                     api=api_mode), 5000)
 
     def update_command_stack_ui(self):
         """更新撤销/重做按钮状态"""

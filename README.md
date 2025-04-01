@@ -17,11 +17,13 @@ Flowmap Canvas is a powerful and easy-to-use tool for creating and editing flowm
 
 Compared to other flowmap editing tools on the market, Flowmap Canvas offers these advantages:
 
+- **Open Source & Extensible**: Built with Python, making it highly customizable and extensible
+- **Seamless Texture Support**: Create perfectly tileable flowmaps with built-in seamless texture editing
+- **High-Precision Export**: Export flowmaps in high-resolution TGA format for professional use
+- **Non-Destructive Editing**: Unlike FlowmapPainter, our brush system adds to existing flowmaps instead of overwriting them, making it perfect for creating complex flow patterns like river branches
+- **Real-time Preview**: Adjust flow speed and distortion in real-time to achieve the perfect effect
 - **User-friendly interface**: Designed for artists, no programming knowledge required
-- **Real-time preview**: Instantly see flow effects, eliminating repetitive export testing
 - **Performance optimization**: Maintains smooth operation even with high-resolution textures
-- **Seamless tiling support**: Create perfectly tileable flowmaps with ease
-- **Open source**: Completely free and open source, customizable to your needs
 
 Flowmap Canvas makes creating flowmaps simple and efficient for both beginners and professional artists.
 
@@ -122,11 +124,13 @@ GPL v3 License - See the LICENSE file in the project for details.
 
 相比市面上其他流向图编辑工具，流向图画布具有以下优势：
 
+- **开源可扩展**：使用Python开发，高度可定制和扩展
+- **四方连续支持**：内置四方连续贴图编辑功能，轻松创建无缝贴图
+- **高精度导出**：支持导出高分辨率TGA格式，满足专业需求
+- **非破坏性编辑**：与FlowmapPainter不同，我们的笔刷系统采用叠加模式而不是覆盖模式，特别适合创建复杂的流向图案，如河流支流
+- **实时预览**：支持实时调整流动速度和扭曲程度，直观预览效果
 - **用户友好界面**：专为艺术家设计，无需编程知识
-- **实时预览**：即时看到流动效果，避免反复导出测试
 - **性能优化**：即使处理高分辨率纹理也能保持流畅
-- **四方连续支持**：无缝贴图绘制功能，解决拼接问题
-- **开源免费**：完全开源，可根据需求自由扩展
 
 流向图画布让流向图的创建变得简单而高效，无论是初学者还是专业艺术家，都能轻松掌握并创建出精美的流向效果。
 
