@@ -155,6 +155,6 @@ Flowmaps typically encode direction vectors in the red and green channels:
 5. 通过设置面板调整各种参数
 6. 导出为TGA格式使用
 
-![](img/Flowmap Canvas.gif)
+![](img/Flowmap%20Canvas.gif)
 
 </div>
