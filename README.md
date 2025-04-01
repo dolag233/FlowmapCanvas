@@ -11,7 +11,7 @@
 
 # Flowmap Canvas
 
-Flowmap Canvas is a powerful and easy-to-use tool for creating and editing flowmaps, designed for 3D artists, game developers, and technical artists.
+Flowmap Canvas is a powerful and easy-to-use tool for creating and editing flowmaps, designed for game developers, 3D artists, and technical artists.
 
 ## Why Choose Flowmap Canvas?
 
@@ -27,7 +27,7 @@ Flowmap Canvas makes creating flowmaps simple and efficient for both beginners a
 
 ## What is a Flowmap?
 
-A flowmap is a special texture used to control the directional flow of materials, commonly used in:
+A flowmap is a special texture used in game development to control the directional flow of materials, commonly used in:
 - Controlling water, lava, and other liquid material directions
 - Guiding fabric and hair material directions
 - Simulating wind effects
@@ -40,15 +40,15 @@ Flowmaps typically encode direction vectors in the red and green channels:
 ## Key Features
 
 ### Intuitive Drawing System
-- Pressure-sensitive brush support for precise flow drawing
+- Simple and effective flowmap brush tools
 - Real-time flow effect preview
 - Seamless texture editing support
 - High-precision and standard precision modes
 
 ### Powerful Editing Tools
-- Left-click to draw, right-click to erase
-- Middle-click to pan canvas, scroll wheel to zoom
-- Alt+drag to adjust brush size and strength
+- Draw and erase tools for precise control
+- Canvas navigation with pan and zoom
+- Brush size and strength adjustment
 - Flow fill functionality
 
 ### Advanced Preview Features
@@ -70,14 +70,43 @@ Flowmaps typically encode direction vectors in the red and green channels:
 - Optimized brush engine for smooth drawing experience
 - Support for both DirectX and OpenGL coordinate systems
 
+## Setting Up Python Environment
+
+If you want to run from source code rather than using the packaged executable, follow these steps:
+
+### Required Environment Setup
+You must install Python in the `env/Python` directory structure:
+
+1. Create the environment structure:
+   ```
+   mkdir -p env/Python
+   ```
+2. Install Python 3.9+ into this directory
+3. Ensure Python executable is at `env/Python/python.exe`
+
+### Running the Application
+1. Run `start.bat` to start the program using the pre-configured environment
+2. Or manually run: `env\Python\python.exe main.py`
+
 ## How to Use
 
-1. Run `run_flowmap_canvas.bat` to start the program
+1. Run `start.bat` to start the program
 2. Use left-click to draw flow, right-click to erase
 3. Use middle-click to drag canvas, scroll wheel to zoom
-4. Alt+drag to adjust brush properties
-5. Adjust various parameters through the settings panel
-6. Export as TGA format for use
+4. Adjust brush properties through the settings panel
+5. Export as TGA format for use
+
+## System Requirements
+
+- Windows 7/8/10/11
+- OpenGL 3.2+ support
+- Python 3.9+ (if running from source)
+- 4GB RAM recommended
+- GPU with OpenGL 3.2 support
+
+## License
+
+GPL v3 License - See the LICENSE file in the project for details.
 
 </div>
 
@@ -87,7 +116,7 @@ Flowmaps typically encode direction vectors in the red and green channels:
 
 # 流向图画布
 
-流向图画布是一个功能强大、易于使用的流向图(Flowmap)创建和编辑工具，专为3D艺术家、游戏开发者和技术美术工作者设计。
+流向图画布是一个功能强大、易于使用的流向图(Flowmap)创建和编辑工具，专为游戏开发者、3D艺术家和技术美术工作者设计。
 
 ## 为什么选择流向图画布？
 
@@ -103,7 +132,7 @@ Flowmaps typically encode direction vectors in the red and green channels:
 
 ## 什么是流向图(Flowmap)？
 
-流向图是一种特殊的纹理贴图，用于控制材质的流动方向，常用于以下场景：
+流向图是游戏开发中使用的一种特殊纹理贴图，用于控制材质的流动方向，常用于以下场景：
 - 水流、岩浆等液体材质的方向控制
 - 布料、毛发等材质的方向引导
 - 风场效果模拟
@@ -116,15 +145,15 @@ Flowmaps typically encode direction vectors in the red and green channels:
 ## 主要功能
 
 ### 直观的绘制系统
-- 支持压力感应笔刷，让流向绘制更加精准
+- 简单高效的流向笔刷工具
 - 实时预览流动效果，直观了解绘制结果
 - 支持四方连续(Seamless)贴图编辑
 - 支持高精度和标准精度模式
 
 ### 强大的编辑工具
-- 左键绘制，右键擦除
-- 中键拖动画布，滚轮缩放
-- Alt+拖动调整笔刷大小和强度
+- 绘制和擦除工具提供精确控制
+- 画布导航支持平移和缩放
+- 可调整笔刷大小和强度
 - 支持流向填充功能
 
 ### 高级预览功能
@@ -146,14 +175,43 @@ Flowmaps typically encode direction vectors in the red and green channels:
 - 优化的笔刷引擎，支持流畅的绘制体验
 - 支持DirectX和OpenGL坐标系统切换
 
+## Python环境配置方法
+
+如果您想从源代码运行而不是使用打包好的可执行文件，请按照以下步骤操作：
+
+### 必要的环境设置
+您必须将Python安装到`env/Python`目录结构中：
+
+1. 创建环境结构：
+   ```
+   mkdir -p env/Python
+   ```
+2. 在此目录中安装Python 3.9+
+3. 确保Python可执行文件位于`env/Python/python.exe`
+
+### 运行应用程序
+1. 运行`start.bat`以使用预配置环境启动程序
+2. 或手动运行：`env\Python\python.exe main.py`
+
 ## 使用方法
 
-1. 运行`run_flowmap_canvas.bat`启动程序
+1. 运行`start.bat`启动程序
 2. 使用左键绘制流向，右键擦除
 3. 使用中键拖动画布，滚轮缩放
-4. Alt+拖动调整笔刷属性
-5. 通过设置面板调整各种参数
-6. 导出为TGA格式使用
+4. 通过设置面板调整各种参数
+5. 导出为TGA格式使用
+
+## 系统要求
+
+- Windows 7/8/10/11
+- OpenGL 3.2+支持
+- Python 3.9+（如果从源代码运行）
+- 建议4GB RAM
+- 支持OpenGL 3.2的GPU
+
+## 许可证
+
+GPL v3许可证 - 请查看项目中的LICENSE文件了解详情。
 
 ![](img/Flowmap%20Canvas.gif)
 
