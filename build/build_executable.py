@@ -11,33 +11,25 @@ def ensure_path_exists(path):
         os.makedirs(path)
         print(f"创建目录: {path}")
 
-def copy_resources(dist_dir):
+def copy_resources(dist_dir, project_root):
     """复制所需资源文件到打包目录"""
     resources = [
         "flow_shader.glsl",
         "background.png",
         "style.qss",
-        "app_settings.json"
+        "app_settings.json",
+        "FlowmapCanvas.ico"  # 添加图标文件到复制列表
     ]
-    
-    # 可能需要创建的子目录
-    ensure_path_exists(os.path.join(dist_dir, "img"))
     
     # 复制根目录资源
     for res in resources:
-        if os.path.exists(res):
-            shutil.copy2(res, os.path.join(dist_dir, res))
-            print(f"已复制: {res}")
+        source_path = os.path.join(project_root, res)
+        if os.path.exists(source_path):
+            target_path = os.path.join(dist_dir, res)
+            shutil.copy2(source_path, target_path)
+            print(f"已复制资源文件: {source_path} -> {target_path}")
         else:
-            print(f"警告: 找不到资源 {res}")
-    
-    # 复制img目录下的所有文件
-    if os.path.exists("img"):
-        for file in os.listdir("img"):
-            src_path = os.path.join("img", file)
-            if os.path.isfile(src_path):
-                shutil.copy2(src_path, os.path.join(dist_dir, "img", file))
-                print(f"已复制: {src_path}")
+            print(f"警告: 找不到资源文件 {source_path}")
 
 def check_pyinstaller(python_path):
     """检查PyInstaller是否已安装，如果没有则安装"""
@@ -77,9 +69,21 @@ def get_hidden_imports():
         "OpenGL.arrays.ctypespointers"
     ]
 
+def clean_spec_files(app_name):
+    """清理项目根目录下的.spec文件，保持根目录整洁"""
+    spec_file = f"{app_name}.spec"
+    if os.path.exists(spec_file):
+        try:
+            os.remove(spec_file)
+            print(f"已移除根目录下的 {spec_file} 文件")
+        except Exception as e:
+            print(f"警告: 无法删除 {spec_file}: {e}")
+
 def main():
     # 切换到项目根目录
-    os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)
+    os.chdir(project_root)
     
     # 获取项目根目录
     project_root = os.getcwd()
@@ -104,7 +108,21 @@ def main():
     # 准备PyInstaller命令行参数
     app_name = "FlowmapCanvas"
     main_script = "main.py"
-    icon_path = "img/icon.ico" if os.path.exists("img/icon.ico") else ""
+    
+    # 清理根目录下的spec文件
+    clean_spec_files(app_name)
+    
+    # 确保build目录存在
+    build_dir = os.path.join(project_root, "build")
+    ensure_path_exists(build_dir)
+    
+    # 检查图标文件
+    icon_path = os.path.join(project_root, "FlowmapCanvas.ico")
+    if os.path.exists(icon_path):
+        print(f"找到图标文件: {icon_path}")
+    else:
+        print("警告: 图标文件不存在！")
+        icon_path = ""
     
     # 构建命令列表
     cmd = [
@@ -114,6 +132,7 @@ def main():
         "--windowed",  # 不显示控制台窗口
         "--noconfirm",  # 覆盖输出目录
         "--clean",  # 清理临时文件
+        "--specpath", build_dir,  # 将spec文件放在build目录下
     ]
     
     # 添加图标
@@ -130,19 +149,27 @@ def main():
         "flow_shader.glsl",
         "background.png",
         "style.qss",
-        "app_settings.json"
+        "app_settings.json",
+        "FlowmapCanvas.ico"  # 添加图标文件到数据文件列表
     ]
     
     for data_file in data_files:
-        if os.path.exists(data_file):
-            cmd.extend(["--add-data", f"{data_file}{sep}{data_file}"])
+        file_path = os.path.join(project_root, data_file)
+        if os.path.exists(file_path):
+            # 使用绝对路径来确保PyInstaller能找到文件
+            # 但目标路径仍使用相对路径，保持简单
+            cmd.extend(["--add-data", f"{file_path}{sep}{data_file}"])
+            print(f"添加数据文件: {file_path} -> {data_file}")
+        else:
+            print(f"警告: 找不到数据文件 {file_path}")
     
-    # 添加图片文件夹
-    if os.path.exists("img"):
-        cmd.extend(["--add-data", f"img{sep}img"])
-    
-    # 添加主脚本
-    cmd.append(main_script)
+    # 添加主脚本 - 使用绝对路径
+    main_script_path = os.path.join(project_root, main_script)
+    if os.path.exists(main_script_path):
+        cmd.append(main_script_path)
+    else:
+        print(f"错误: 找不到主脚本文件 {main_script_path}")
+        return 1
     
     # 输出命令
     print("执行 PyInstaller 命令:")
@@ -178,13 +205,21 @@ def main():
             
             # 复制额外资源
             dist_dir = os.path.join("dist", app_name)
-            copy_resources(dist_dir)
+            copy_resources(dist_dir, project_root)
             
             # 创建启动脚本
             with open(os.path.join(dist_dir, "start.bat"), "w") as f:
                 f.write(f"@echo off\necho 正在启动{app_name}...\nstart {app_name}.exe\n")
             
             print("已创建启动脚本: start.bat")
+            
+            # 检查spec文件位置并显示信息
+            spec_file = os.path.join(build_dir, f"{app_name}.spec")
+            if os.path.exists(spec_file):
+                print(f"\nSpec文件已保存在: {spec_file}")
+            else:
+                print("\n警告: 未找到spec文件，可能未正确生成")
+                
             print(f"\n所有文件已准备就绪，可以通过运行 'dist/{app_name}/start.bat' 启动程序")
             return 0
         else:

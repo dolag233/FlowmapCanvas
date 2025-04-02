@@ -1,4 +1,5 @@
 import os
+import sys
 from PyQt5.QtWidgets import (
     QAction, QMainWindow, QWidget, QDockWidget, QVBoxLayout, QLabel, QComboBox, QPushButton,
     QHBoxLayout, QSlider, QFileDialog, QMessageBox, QGroupBox, QGridLayout, QCheckBox, 
@@ -6,7 +7,7 @@ from PyQt5.QtWidgets import (
 )
 from PyQt5.QtCore import Qt, QPointF, QSize, QTimer, QPoint, QObject, pyqtSignal as Signal
 from PyQt5.QtWidgets import QGraphicsView, QGraphicsScene
-from PyQt5.QtGui import QPixmap, QSurfaceFormat, QPen, QBrush, QColor, QPainter, QImage, QPalette, QFont
+from PyQt5.QtGui import QPixmap, QSurfaceFormat, QPen, QBrush, QColor, QPainter, QImage, QPalette, QFont, QIcon
 from opengl_canvas import FlowmapCanvas
 from command_manager import CommandManager
 from commands import BrushStrokeCommand, ParameterChangeCommand
@@ -39,6 +40,26 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(translator.tr("app_title"))
         self.setGeometry(100, 100, 1280, 720)
+        
+        # 设置窗口图标 - 处理打包后的路径
+        if getattr(sys, 'frozen', False):
+            # 如果应用程序被打包
+            app_path = os.path.dirname(sys.executable)
+        else:
+            # 如果是直接运行脚本
+            app_path = os.path.dirname(os.path.abspath(__file__))
+            
+        icon_path = os.path.join(app_path, 'FlowmapCanvas.ico')
+        
+        # 如果打包路径下没找到，尝试常规路径
+        if not os.path.exists(icon_path):
+            icon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'FlowmapCanvas.ico')
+        
+        if os.path.exists(icon_path):
+            print(f"MainWindow: 找到图标文件: {icon_path}")
+            self.setWindowIcon(QIcon(icon_path))
+        else:
+            print(f"MainWindow: 警告: 图标文件不存在: {icon_path}")
         
         # 初始化OpenGL画布
         fmt = QSurfaceFormat()
