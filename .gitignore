@@ -4,5 +4,6 @@
 /env/Python
 /build/FlowmapCanvas
 /dist
-*.spec
+/*.spec
 app_settings.json
+.cursorignore
