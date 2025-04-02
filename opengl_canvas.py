@@ -1352,6 +1352,9 @@ class FlowmapCanvas(QOpenGLWidget):
         from PIL import Image
         import numpy as np
         import os
+        import time
+        
+        start_time = time.time()
 
         # 获取当前纹理尺寸
         texture_height, texture_width = self.flowmap_data.shape[:2]
@@ -1360,17 +1363,19 @@ class FlowmapCanvas(QOpenGLWidget):
         if target_size is None:
             target_size = (texture_width, texture_height)
         
-        # 创建RGB图像数据
+        # 使用NumPy的向量化操作快速转换数据
+        # 1. 提取R和G通道并缩放到[0,255]范围
+        r_channel = (self.flowmap_data[..., 0] * 255).astype(np.uint8)
+        g_channel = (self.flowmap_data[..., 1] * 255).astype(np.uint8)
+        
+        # 2. 创建RGB数组
         data = np.zeros((texture_height, texture_width, 3), dtype=np.uint8)
-
-        # 遍历纹理数据并转换为RGB格式
-        for y in range(texture_height):
-            for x in range(texture_width):
-                r = int(self.flowmap_data[y, x, 0] * 255)  # Red channel
-                g = int(self.flowmap_data[y, x, 1] * 255)  # Green channel
-
-                # 存储到RGB图像数据，翻转Y轴以匹配最终图像格式
-                data[texture_height - y - 1, x] = [r, g, 0]
+        data[..., 0] = r_channel  # R通道
+        data[..., 1] = g_channel  # G通道
+        # B通道保持为0
+        
+        # 3. 翻转Y轴以匹配最终图像格式
+        data = np.flipud(data)
 
         # 创建PIL图像
         img = Image.fromarray(data, 'RGB')
@@ -1391,13 +1396,15 @@ class FlowmapCanvas(QOpenGLWidget):
         _, file_ext = os.path.splitext(file_path)
         file_ext = file_ext.lower()
 
-        # 根据扩展名选择格式
+        # 根据扩展名选择格式并使用优化的参数
         if file_ext == '.tga':
             img.save(file_path, format='TGA')
         elif file_ext == '.png':
-            img.save(file_path, format='PNG')
+            # 优化PNG保存参数 - 减少压缩级别提高速度
+            img.save(file_path, format='PNG', optimize=False, compress_level=1)
         elif file_ext == '.jpg' or file_ext == '.jpeg':
-            img.save(file_path, format='JPEG', quality=95)
+            # 使用较低的质量值提高保存速度
+            img.save(file_path, format='JPEG', quality=90, optimize=False)
         elif file_ext == '.bmp':
             img.save(file_path, format='BMP')
         else:
@@ -1407,8 +1414,9 @@ class FlowmapCanvas(QOpenGLWidget):
             img.save(file_path, format='TGA')
             print(f"未知格式，已默认使用TGA格式保存: {file_path}")
 
-        # 发送信号表示已完成导出
-        print(f"已导出Flowmap到: {file_path}")
+        # 计算并显示导出所需时间
+        elapsed_time = time.time() - start_time
+        print(f"已导出Flowmap到: {file_path}，耗时: {elapsed_time:.2f}秒")
         
     # 保留旧函数名以保持兼容性，但内部调用新函数
     def export_to_tga(self, file_path, target_size=None, use_bilinear=True):
