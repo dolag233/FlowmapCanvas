@@ -547,7 +547,10 @@ class MainWindow(QMainWindow):
         """处理速度灵敏度滑块变化"""
         sensitivity = value / 100.0  # 转换为 0-1 范围
         self.canvas_widget.speed_sensitivity = sensitivity
-        self.speed_sensitivity_label.setText(f"{translator.tr('speed_sensitivity')}: {sensitivity:.2f}")
+        
+        # 更新UI标签 - 使用panel_manager获取和更新标签
+        self.panel_manager.update_speed_sensitivity_label(sensitivity)
+        
         self.status_bar.showMessage(translator.tr("sensitivity_changed", value=sensitivity), 2000)
 
     def on_preview_repeat_changed(self, state):
