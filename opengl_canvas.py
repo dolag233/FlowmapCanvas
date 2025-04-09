@@ -1340,7 +1340,7 @@ class FlowmapCanvas(QOpenGLWidget):
         # 更新预览窗口大小
         self.update_preview_size()
 
-    def export_flowmap(self, file_path, target_size=None, use_bilinear=True):
+    def export_flowmap(self, file_path, target_size=None, use_bilinear=True, invert_r=False, invert_g=False):
         """
         导出Flowmap为不同格式的图片文件
 
@@ -1348,6 +1348,8 @@ class FlowmapCanvas(QOpenGLWidget):
         file_path -- 导出文件的路径（包含扩展名，如.tga、.png、.jpg等）
         target_size -- 目标尺寸元组(width, height)，如果None则使用当前纹理尺寸
         use_bilinear -- 如果需要缩放，是否使用双线性插值(True)或最近邻(False)
+        invert_r -- 是否反转R通道
+        invert_g -- 是否反转G通道
         """
         from PIL import Image
         import numpy as np
@@ -1365,8 +1367,18 @@ class FlowmapCanvas(QOpenGLWidget):
         
         # 使用NumPy的向量化操作快速转换数据
         # 1. 提取R和G通道并缩放到[0,255]范围
-        r_channel = (self.flowmap_data[..., 0] * 255).astype(np.uint8)
-        g_channel = (self.flowmap_data[..., 1] * 255).astype(np.uint8)
+        r_channel = self.flowmap_data[..., 0]
+        g_channel = self.flowmap_data[..., 1]
+        
+        # 应用通道反转
+        if invert_r:
+            r_channel = 1.0 - r_channel
+        if invert_g:
+            g_channel = 1.0 - g_channel
+            
+        # 转换为uint8
+        r_channel = (r_channel * 255).astype(np.uint8)
+        g_channel = (g_channel * 255).astype(np.uint8)
         
         # 2. 创建RGB数组
         data = np.zeros((texture_height, texture_width, 3), dtype=np.uint8)

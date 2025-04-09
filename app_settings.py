@@ -17,11 +17,41 @@ class AppSettings:
     
     def __init__(self):
         # 初始化默认值
-        self.is_dark_mode = self._detect_system_theme()
-        self.high_resolution_mode = False
-        self.texture_size = (1024, 1024)
-        self.seamless_mode = False
-        self.preview_repeat = False
+        self._is_dark_mode = self._detect_system_theme()
+        self._high_resolution_mode = False
+        self._texture_size = (1024, 1024)
+        self._seamless_mode = False
+        self._preview_repeat = False
+        self._invert_r_channel = False
+        self._invert_g_channel = False
+        
+    @property
+    def is_dark_mode(self):
+        return self._is_dark_mode
+        
+    @property
+    def high_resolution_mode(self):
+        return self._high_resolution_mode
+        
+    @property
+    def texture_size(self):
+        return self._texture_size
+        
+    @property
+    def seamless_mode(self):
+        return self._seamless_mode
+        
+    @property
+    def preview_repeat(self):
+        return self._preview_repeat
+        
+    @property
+    def invert_r_channel(self):
+        return self._invert_r_channel
+        
+    @property
+    def invert_g_channel(self):
+        return self._invert_g_channel
         
     def _detect_system_theme(self):
         """检测系统是否为深色模式"""
@@ -30,26 +60,34 @@ class AppSettings:
         
     def toggle_theme(self):
         """切换深色/浅色模式"""
-        self.is_dark_mode = not self.is_dark_mode
-        return self.is_dark_mode
+        self._is_dark_mode = not self._is_dark_mode
+        return self._is_dark_mode
         
     def toggle_high_res_mode(self, enabled):
         """切换高精度模式"""
-        self.high_resolution_mode = enabled
-        self.texture_size = (2048, 2048) if enabled else (1024, 1024)
-        return self.texture_size
+        self._high_resolution_mode = enabled
+        self._texture_size = (2048, 2048) if enabled else (1024, 1024)
+        return self._texture_size
     
     def set_seamless_mode(self, enabled):
         """设置无缝模式"""
-        self.seamless_mode = enabled
+        self._seamless_mode = enabled
         
     def set_preview_repeat(self, enabled):
         """设置预览重复模式"""
-        self.preview_repeat = enabled
+        self._preview_repeat = enabled
+        
+    def set_invert_r_channel(self, enabled):
+        """设置R通道反转状态"""
+        self._invert_r_channel = enabled
+        
+    def set_invert_g_channel(self, enabled):
+        """设置G通道反转状态"""
+        self._invert_g_channel = enabled
         
     def get_theme_stylesheet(self):
         """生成主题样式表"""
-        if self.is_dark_mode:
+        if self._is_dark_mode:
             # 深色模式样式
             background_color = "#2D2D30"
             text_color = "#FFFFFF"
@@ -175,24 +213,30 @@ class AppSettings:
             if os.path.exists("app_settings.json"):
                 with open("app_settings.json", "r", encoding="utf-8") as f:
                     settings = json.load(f)
-                    self.is_dark_mode = settings.get("is_dark_mode", self.is_dark_mode)
-                    self.high_resolution_mode = settings.get("high_resolution_mode", self.high_resolution_mode)
-                    self.seamless_mode = settings.get("seamless_mode", self.seamless_mode)
-                    self.preview_repeat = settings.get("preview_repeat", self.preview_repeat)
+                    # 使用 get 方法提供默认值
+                    self._is_dark_mode = settings.get("is_dark_mode", self._is_dark_mode)
+                    self._high_resolution_mode = settings.get("high_resolution_mode", self._high_resolution_mode)
+                    self._seamless_mode = settings.get("seamless_mode", self._seamless_mode)
+                    self._preview_repeat = settings.get("preview_repeat", self._preview_repeat)
+                    self._invert_r_channel = settings.get("invert_r_channel", self._invert_r_channel)
+                    self._invert_g_channel = settings.get("invert_g_channel", self._invert_g_channel)
                     
-                    if self.high_resolution_mode:
-                        self.texture_size = (2048, 2048)
+                    if self._high_resolution_mode:
+                        self._texture_size = (2048, 2048)
         except Exception as e:
             print(f"加载设置出错: {e}")
+            # 出错时保持默认值
     
     def save_settings(self):
         """保存设置到配置文件"""
         try:
             settings = {
-                "is_dark_mode": self.is_dark_mode,
-                "high_resolution_mode": self.high_resolution_mode,
-                "seamless_mode": self.seamless_mode,
-                "preview_repeat": self.preview_repeat
+                "is_dark_mode": self._is_dark_mode,
+                "high_resolution_mode": self._high_resolution_mode,
+                "seamless_mode": self._seamless_mode,
+                "preview_repeat": self._preview_repeat,
+                "invert_r_channel": self._invert_r_channel,
+                "invert_g_channel": self._invert_g_channel
             }
             
             with open("app_settings.json", "w", encoding="utf-8") as f:

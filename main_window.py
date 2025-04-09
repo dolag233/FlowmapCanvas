@@ -410,18 +410,29 @@ class MainWindow(QMainWindow):
         interp_layout.addWidget(interp_combo)
         other_layout.addLayout(interp_layout)
         
-        # 添加API模式选择
-        api_layout = QHBoxLayout()
-        api_label = QLabel(translator.tr("coordinate_system"))
-        api_label.setFixedWidth(130)
+        # 添加通道反转选项
+        channel_layout = QHBoxLayout()
+        channel_label = QLabel(translator.tr("channel_inversion"))
+        channel_label.setFixedWidth(130)
         
-        api_combo = QComboBox()
-        api_combo.addItems(["OpenGL", "DirectX"])
-        api_combo.setCurrentIndex(0)  # 默认OpenGL
+        # 创建复选框容器
+        checkbox_container = QHBoxLayout()
+        checkbox_container.setSpacing(15)  # 设置复选框间距
         
-        api_layout.addWidget(api_label)
-        api_layout.addWidget(api_combo)
-        other_layout.addLayout(api_layout)
+        invert_r_checkbox = QCheckBox(translator.tr("invert_r_channel"))
+        invert_g_checkbox = QCheckBox(translator.tr("invert_g_channel"))
+        
+        # 设置初始状态
+        invert_r_checkbox.setChecked(app_settings.invert_r_channel)
+        invert_g_checkbox.setChecked(app_settings.invert_g_channel)
+        
+        checkbox_container.addWidget(invert_r_checkbox)
+        checkbox_container.addWidget(invert_g_checkbox)
+        checkbox_container.addStretch()  # 添加弹性空间
+        
+        channel_layout.addWidget(channel_label)
+        channel_layout.addLayout(checkbox_container)
+        other_layout.addLayout(channel_layout)
         
         # 添加其他设置组到主布局
         layout.addWidget(other_group)
@@ -496,24 +507,22 @@ class MainWindow(QMainWindow):
             interp_method = interp_combo.currentText()
             use_bilinear = interp_method == translator.tr("bilinear")
             
-            # 获取当前选择的API模式
-            api_mode = api_combo.currentText().lower()
+            # 获取通道反转设置
+            invert_r = invert_r_checkbox.isChecked()
+            invert_g = invert_g_checkbox.isChecked()
             
-            # 暂时切换到选定的API模式
-            original_api_mode = self.canvas_widget.graphics_api_mode
-            self.canvas_widget.set_graphics_api_mode(api_mode)
+            # 保存通道反转设置
+            app_settings.set_invert_r_channel(invert_r)
+            app_settings.set_invert_g_channel(invert_g)
+            app_settings.save_settings()
             
             # 导出
-            self.canvas_widget.export_flowmap(path, target_size, use_bilinear)
-            
-            # 导出后恢复原来的API模式
-            self.canvas_widget.set_graphics_api_mode(original_api_mode)
+            self.canvas_widget.export_flowmap(path, target_size, use_bilinear, invert_r, invert_g)
             
             self.status_bar.showMessage(translator.tr("flowmap_exported", 
                                                      path=path, 
                                                      res=f"{width}x{height}", 
-                                                     interp=interp_method, 
-                                                     api=api_mode), 5000)
+                                                     interp=interp_method), 5000)
 
     def update_command_stack_ui(self):
         """更新撤销/重做按钮状态"""
