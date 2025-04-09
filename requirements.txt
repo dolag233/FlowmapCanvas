@@ -4,4 +4,3 @@ numpy==1.24.3
 PyOpenGL
 PyOpenGL_accelerate
 python-dateutil==2.8.2
-pyfbx
