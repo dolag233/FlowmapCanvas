@@ -1290,6 +1290,148 @@ class FlowmapCanvas(QOpenGLWidget):
             QMessageBox.critical(self, "Import Error", f"Failed to load base image: {e}")
             self.doneCurrent() # 确保释放OpenGL上下文
 
+    def import_flowmap(self, file_path, target_size=None, use_bilinear=True, invert_r=False, invert_g=False):
+        """
+        导入Flowmap从图像文件
+        
+        参数:
+        file_path -- 导入文件的路径
+        target_size -- 目标尺寸元组(width, height)，如果None则使用当前纹理尺寸
+        use_bilinear -- 如果需要缩放，是否使用双线性插值(True)或最近邻(False)
+        invert_r -- 是否反转R通道
+        invert_g -- 是否反转G通道
+        """
+        try:
+            from PIL import Image
+            import numpy as np
+            import os
+            
+            # 确保有效的 OpenGL 上下文
+            self.makeCurrent()
+            
+            # 加载图像
+            img = Image.open(file_path).convert('RGB')
+            width, height = img.size
+            print(f"Importing flowmap: {file_path}, size: {width}x{height}")
+            
+            # 获取图像数据
+            img_data = np.array(img, dtype=np.uint8)
+            
+            # 提取R和G通道
+            r_channel = img_data[..., 0].astype(np.float32) / 255.0
+            g_channel = img_data[..., 1].astype(np.float32) / 255.0
+            
+            # 应用通道反转
+            if invert_r:
+                r_channel = 1.0 - r_channel
+            if invert_g:
+                g_channel = 1.0 - g_channel
+            
+            # 如果指定了目标尺寸且与当前尺寸不同，则进行缩放
+            if target_size and (width, height) != target_size:
+                if use_bilinear:
+                    # 使用双线性插值
+                    resample_method = Image.BILINEAR
+                else:
+                    # 使用最近邻插值
+                    resample_method = Image.NEAREST
+                
+                img = img.resize(target_size, resample_method)
+                width, height = target_size
+                print(f"已将图像从 {img_data.shape[1]}x{img_data.shape[0]} 缩放到 {width}x{height} 使用{resample_method}")
+                
+                # 重新获取缩放后的数据
+                img_data = np.array(img, dtype=np.uint8)
+                r_channel = img_data[..., 0].astype(np.float32) / 255.0
+                g_channel = img_data[..., 1].astype(np.float32) / 255.0
+                
+                # 重新应用通道反转
+                if invert_r:
+                    r_channel = 1.0 - r_channel
+                if invert_g:
+                    g_channel = 1.0 - g_channel
+            
+            # 更新纹理大小以匹配图像尺寸
+            self.texture_size = (width, height)
+            
+            # 翻转Y轴以匹配OpenGL坐标系（与导出时的操作相反）
+            r_channel = np.flipud(r_channel)
+            g_channel = np.flipud(g_channel)
+            
+            # 创建新的flowmap数据
+            self.flowmap_data = np.zeros((height, width, 4), dtype=np.float32)
+            self.flowmap_data[..., 0] = r_channel  # R通道
+            self.flowmap_data[..., 1] = g_channel  # G通道
+            self.flowmap_data[..., 3] = 1.0  # Alpha
+            
+            # 如果flowmap纹理已存在，则删除原纹理
+            if self.flowmap_texture_id != 0:
+                try:
+                    glDeleteTextures(1, [self.flowmap_texture_id])
+                    print(f"Deleted existing flowmap texture: {self.flowmap_texture_id}")
+                except GLError as e:
+                    print(f"Warning: Failed to delete existing flowmap texture: {e}")
+                self.flowmap_texture_id = 0
+            
+            # 创建新的flowmap纹理
+            flow_texture_id = glGenTextures(1)
+            self.flowmap_texture_id = flow_texture_id
+            
+            if self.flowmap_texture_id == 0:
+                print("Error: Failed to generate flowmap texture ID.")
+                QMessageBox.critical(self, "OpenGL Error", "Failed to create flowmap texture object.")
+                self.doneCurrent()
+                return False
+                
+            # 上传flowmap纹理数据
+            try:
+                glBindTexture(GL_TEXTURE_2D, self.flowmap_texture_id)
+                glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, width, height, 0,
+                             GL_RGBA, GL_FLOAT, self.flowmap_data)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+                
+                # 检查上传是否成功
+                error = glGetError()
+                if error != GL_NO_ERROR:
+                    print(f"OpenGL error after flowmap texture upload: {error}")
+                    raise GLError(error, "Flowmap texture upload failed")
+            except GLError as e:
+                print(f"OpenGL error creating flowmap texture: {e}")
+                QMessageBox.critical(self, "OpenGL Error", f"Failed to create flowmap texture: {e}")
+                if self.flowmap_texture_id != 0:
+                    glDeleteTextures(1, [self.flowmap_texture_id])
+                    self.flowmap_texture_id = 0
+                self.doneCurrent()
+                return False
+            finally:
+                glBindTexture(GL_TEXTURE_2D, 0)
+            
+            # 更新预览窗口大小
+            self.update_preview_size()
+            
+            # 更新纵横比校正
+            self.update_aspect_ratio()
+            
+            self.doneCurrent() # 释放OpenGL上下文
+            self.update() # 重绘
+            
+            # 发出信号通知外部flowmap已更新
+            self.flowmap_updated.emit()
+            
+            print(f"Successfully imported flowmap: {file_path}")
+            return True
+            
+        except Exception as e:
+            print(f"Error importing flowmap: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Import Error", f"Failed to import flowmap: {e}")
+            self.doneCurrent() # 确保释放OpenGL上下文
+            return False
+
     def set_texture_size(self, width, height):
         if width <= 0 or height <= 0:
              print(f"Invalid texture size: {width}x{height}")

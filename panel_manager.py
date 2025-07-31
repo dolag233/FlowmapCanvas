@@ -37,6 +37,7 @@ class PanelManager:
         self._create_brush_group(layout)
         self._create_mode_group(layout)
         self._create_flow_group(layout)
+        self._create_channel_orientation_group(layout)
         self._create_fill_controls(layout)
         layout.addStretch()  # 添加伸缩空间，使其他组件靠上
         self._create_shortcut_group(layout)
@@ -188,6 +189,75 @@ class PanelManager:
         self.controls["flow_distortion_slider"] = flow_distortion_slider
         
         parent_layout.addWidget(flow_group)
+
+    def _create_channel_orientation_group(self, parent_layout):
+        """创建通道朝向设置组"""
+        from app_settings import app_settings
+        
+        channel_group = QGroupBox(translator.tr("channel_orientation"))
+        channel_layout = QVBoxLayout()
+        channel_layout.setSpacing(8)
+
+        # 字体
+        font = QFont()
+        font_size = font.pointSize()
+        font.setPointSize(int(font_size * 1.2))
+
+        # R通道反转选项
+        invert_r_checkbox = QCheckBox(translator.tr("invert_r_channel"))
+        invert_r_checkbox.setFont(font)
+        invert_r_checkbox.setChecked(app_settings.invert_r_channel)
+        invert_r_checkbox.stateChanged.connect(self._on_invert_r_changed)
+
+        # G通道反转选项
+        invert_g_checkbox = QCheckBox(translator.tr("invert_g_channel"))
+        invert_g_checkbox.setFont(font)
+        invert_g_checkbox.setChecked(app_settings.invert_g_channel)
+        invert_g_checkbox.stateChanged.connect(self._on_invert_g_changed)
+
+        # 当前朝向状态显示
+        r_orient = translator.tr("r_channel_inverted") if app_settings.invert_r_channel else translator.tr("r_channel_normal")
+        g_orient = translator.tr("g_channel_inverted") if app_settings.invert_g_channel else translator.tr("g_channel_normal")
+        orientation_label = QLabel(translator.tr("current_channel_orientation", r_orient=r_orient, g_orient=g_orient))
+        orientation_label.setStyleSheet("color: #666666; font-size: 10px;")
+        orientation_label.setFont(font)
+
+        # 添加到通道朝向布局
+        channel_layout.addWidget(invert_r_checkbox)
+        channel_layout.addWidget(invert_g_checkbox)
+        channel_layout.addWidget(orientation_label)
+        channel_group.setLayout(channel_layout)
+        
+        # 存储控件引用
+        self.controls["invert_r_checkbox"] = invert_r_checkbox
+        self.controls["invert_g_checkbox"] = invert_g_checkbox
+        self.controls["orientation_label"] = orientation_label
+        
+        parent_layout.addWidget(channel_group)
+
+    def _on_invert_r_changed(self, state):
+        """处理R通道反转状态变化"""
+        from app_settings import app_settings
+        app_settings.set_invert_r_channel(state == Qt.Checked)
+        app_settings.save_settings()
+        self._update_orientation_label()
+
+    def _on_invert_g_changed(self, state):
+        """处理G通道反转状态变化"""
+        from app_settings import app_settings
+        app_settings.set_invert_g_channel(state == Qt.Checked)
+        app_settings.save_settings()
+        self._update_orientation_label()
+
+    def _update_orientation_label(self):
+        """更新朝向状态标签"""
+        from app_settings import app_settings
+        from localization import translator
+        
+        if "orientation_label" in self.controls:
+            r_orient = translator.tr("r_channel_inverted") if app_settings.invert_r_channel else translator.tr("r_channel_normal")
+            g_orient = translator.tr("g_channel_inverted") if app_settings.invert_g_channel else translator.tr("g_channel_normal")
+            self.controls["orientation_label"].setText(translator.tr("current_channel_orientation", r_orient=r_orient, g_orient=g_orient))
 
     def _create_fill_controls(self, parent_layout):
         """创建填充画布控件"""

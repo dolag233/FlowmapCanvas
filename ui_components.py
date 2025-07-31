@@ -49,12 +49,18 @@ class MenuBuilder:
         import_action.triggered.connect(self.main_window.import_background)
         menu.addAction(import_action)
         
+        # 导入Flowmap
+        import_flowmap_action = QAction(translator.tr("import_flowmap"), self.main_window)
+        import_flowmap_action.triggered.connect(self.main_window.import_flowmap)
+        menu.addAction(import_flowmap_action)
+        
         # 导出Flowmap
         export_action = QAction(translator.tr("export_flowmap"), self.main_window)
         export_action.triggered.connect(self.main_window.export_flowmap)
         menu.addAction(export_action)
         
         self.actions["import_background"] = import_action
+        self.actions["import_flowmap"] = import_flowmap_action
         self.actions["export_flowmap"] = export_action
         
     def _build_edit_menu(self, menu):

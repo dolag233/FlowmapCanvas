@@ -22,6 +22,7 @@ TRANSLATIONS = {
     
     # 文件菜单项
     "import_background": {"zh_CN": "导入底图", "en_US": "Import Background"},
+    "import_flowmap": {"zh_CN": "导入Flowmap", "en_US": "Import Flowmap"},
     "export_flowmap": {"zh_CN": "导出Flowmap", "en_US": "Export Flowmap"},
     
     # 编辑菜单项
@@ -84,36 +85,48 @@ TRANSLATIONS = {
     "background_loaded": {"zh_CN": "已加载底图: {path}", "en_US": "Background Loaded: {path}"},
     "default_background_loaded": {"zh_CN": "已加载默认底图: {path}", "en_US": "Default Background Loaded: {path}"},
     "flowmap_exported": {"zh_CN": "Flowmap已导出至: {path} (分辨率: {res}, 使用{interp}, API模式: {api})", "en_US": "Flowmap Exported to: {path} (Resolution: {res}, Using {interp}, API Mode: {api})"},
+    "flowmap_imported": {"zh_CN": "Flowmap已导入: {path} (分辨率: {res})", "en_US": "Flowmap Imported: {path} (Resolution: {res})"},
     
     # 对话框标题和选项
     "export_settings": {"zh_CN": "导出设置", "en_US": "Export Settings"},
+    "import_settings": {"zh_CN": "导入设置", "en_US": "Import Settings"},
     "export_resolution": {"zh_CN": "导出分辨率:", "en_US": "Export Resolution:"},
+    "import_resolution": {"zh_CN": "导入分辨率:", "en_US": "Import Resolution:"},
     "scale_interpolation": {"zh_CN": "缩放插值:", "en_US": "Scale Interpolation:"},
     "bilinear": {"zh_CN": "双线性", "en_US": "Bilinear"},
     "nearest_neighbor": {"zh_CN": "最近邻", "en_US": "Nearest Neighbor"},
     "channel_inversion": {"zh_CN": "通道翻转:", "en_US": "Flip Channel:"},
+    "channel_orientation": {"zh_CN": "通道朝向:", "en_US": "Channel Orientation:"},
     "invert_r_channel": {"zh_CN": "翻转R通道", "en_US": "Flip R"},
     "invert_g_channel": {"zh_CN": "翻转G通道", "en_US": "Flip G"},
     "coordinate_system": {"zh_CN": "坐标系模式:", "en_US": "Coordinate System:"},
     "choose_fill_color": {"zh_CN": "选择填充颜色", "en_US": "Choose Fill Color"},
     "select_background": {"zh_CN": "选择底图", "en_US": "Select Background"},
+    "select_flowmap": {"zh_CN": "选择Flowmap", "en_US": "Select Flowmap"},
     "image_files": {"zh_CN": "图像文件 (*.png *.jpg *.jpeg *.bmp *.tga *.tif *.tiff)", "en_US": "Image files (*.png *.jpg *.jpeg *.bmp *.tga *.tif *.tiff)"},
-    "tga_files": {"zh_CN": "TGA文件 (*.tga)", "en_US": "TGA files (*.tga)"},
-    "png_files": {"zh_CN": "PNG文件 (*.png)", "en_US": "PNG files (*.png)"},
-    "jpg_files": {"zh_CN": "JPEG文件 (*.jpg *.jpeg)", "en_US": "JPEG files (*.jpg *.jpeg)"},
-    "bmp_files": {"zh_CN": "BMP文件 (*.bmp)", "en_US": "BMP files (*.bmp)"},
-    "custom_size": {"zh_CN": "自定义", "en_US": "Custom"},
+    "flowmap_files": {"zh_CN": "Flowmap文件 (*.png *.jpg *.jpeg *.bmp *.tga *.tif *.tiff)", "en_US": "Flowmap files (*.png *.jpg *.jpeg *.bmp *.tga *.tif *.tiff)"},
+    "preset_resolution": {"zh_CN": "预设分辨率:", "en_US": "Preset Resolution:"},
+    "custom_size": {"zh_CN": "自定义尺寸", "en_US": "Custom Size"},
     "width_label": {"zh_CN": "宽度:", "en_US": "Width:"},
     "height_label": {"zh_CN": "高度:", "en_US": "Height:"},
-    "preset_resolution": {"zh_CN": "预设分辨率:", "en_US": "Preset Resolution:"},
     "lock_aspect_ratio": {"zh_CN": "锁定长宽比", "en_US": "Lock Aspect Ratio"},
     "other_settings": {"zh_CN": "其他设置", "en_US": "Other Settings"},
+    "tga_files": {"zh_CN": "TGA文件 (*.tga)", "en_US": "TGA files (*.tga)"},
+    "png_files": {"zh_CN": "PNG文件 (*.png)", "en_US": "PNG files (*.png)"},
+    "jpg_files": {"zh_CN": "JPG文件 (*.jpg *.jpeg)", "en_US": "JPG files (*.jpg *.jpeg)"},
+    "bmp_files": {"zh_CN": "BMP文件 (*.bmp)", "en_US": "BMP files (*.bmp)"},
     
-    # 错误消息
-    "opengl_error": {"zh_CN": "错误：OpenGL 3.3上下文初始化失败", "en_US": "Error: OpenGL 3.3 Context Initialization Failed"},
-    "invalid_texture_size": {"zh_CN": "无效的纹理尺寸", "en_US": "Invalid Texture Size"},
-    'flow_speed_changed': {'zh_CN': '流动速度已调整为: {value:.2f}', 'en_US': 'Flow speed set to: {value:.2f}'},
-    'flow_distance_changed': {'zh_CN': '流动距离已调整为: {value:.2f}', 'en_US': 'Flow distance set to: {value:.2f}'},
+    # 导入相关消息
+    "import_success": {"zh_CN": "Flowmap导入成功", "en_US": "Flowmap imported successfully"},
+    "import_failed": {"zh_CN": "Flowmap导入失败", "en_US": "Failed to import flowmap"},
+    "invalid_image_format": {"zh_CN": "无效的图像格式", "en_US": "Invalid image format"},
+    "image_too_large": {"zh_CN": "图像尺寸过大", "en_US": "Image size too large"},
+    "image_too_small": {"zh_CN": "图像尺寸过小", "en_US": "Image size too small"},
+    "current_channel_orientation": {"zh_CN": "当前通道朝向: R={r_orient}, G={g_orient}", "en_US": "Current channel orientation: R={r_orient}, G={g_orient}"},
+    "r_channel_normal": {"zh_CN": "正常", "en_US": "Normal"},
+    "r_channel_inverted": {"zh_CN": "反转", "en_US": "Inverted"},
+    "g_channel_normal": {"zh_CN": "正常", "en_US": "Normal"},
+    "g_channel_inverted": {"zh_CN": "反转", "en_US": "Inverted"},
 }
 
 class Translator:

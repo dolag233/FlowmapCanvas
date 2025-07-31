@@ -524,6 +524,243 @@ class MainWindow(QMainWindow):
                                                      res=f"{width}x{height}", 
                                                      interp=interp_method), 5000)
 
+    def import_flowmap(self):
+        """处理导入Flowmap的功能，支持多种格式和通道朝向设置"""
+        from PyQt5.QtWidgets import QInputDialog, QComboBox, QDialog, QVBoxLayout, QLabel, QDialogButtonBox, QHBoxLayout, QSpinBox, QCheckBox, QGroupBox
+        
+        # 创建带有过滤器的文件对话框
+        flowmap_filter = translator.tr("flowmap_files")
+        path, selected_filter = QFileDialog.getOpenFileName(self, translator.tr("select_flowmap"), '', flowmap_filter)
+        if not path:
+            return
+
+        # 创建自定义对话框
+        dialog = QDialog(self)
+        dialog.setWindowTitle(translator.tr("import_settings"))
+        dialog.setMinimumWidth(350)  # 设置最小宽度，避免对话框太窄
+        layout = QVBoxLayout()
+        
+        # 获取当前纹理大小
+        current_width, current_height = self.canvas_widget.texture_size
+        
+        # 计算原始纹理宽高比
+        original_aspect_ratio = current_width / current_height
+        
+        # 创建分辨率分组框
+        res_group = QGroupBox(translator.tr("import_resolution"))
+        res_layout = QVBoxLayout()
+        res_group.setLayout(res_layout)
+        
+        # 添加预设分辨率选择框
+        preset_layout = QHBoxLayout()
+        preset_label = QLabel(translator.tr("preset_resolution"))
+        preset_label.setFixedWidth(100)  # 固定标签宽度，使UI整齐
+        
+        preset_combo = QComboBox()
+        presets = [translator.tr("custom_size"), '512x512', '1024x1024', '2048x2048', '4096x4096']
+        preset_combo.addItems(presets)
+        
+        preset_layout.addWidget(preset_label)
+        preset_layout.addWidget(preset_combo)
+        res_layout.addLayout(preset_layout)
+        
+        # 创建宽高输入区域
+        dims_layout = QHBoxLayout()
+        
+        # 宽度输入框
+        width_label = QLabel(translator.tr("width_label"))
+        width_label.setFixedWidth(50)
+        width_spinbox = QSpinBox()
+        width_spinbox.setRange(1, 8192)
+        width_spinbox.setValue(current_width)
+        width_spinbox.setSingleStep(1)
+        width_spinbox.setMinimumWidth(80)
+        
+        # 高度输入框
+        height_label = QLabel(translator.tr("height_label"))
+        height_label.setFixedWidth(50)
+        height_spinbox = QSpinBox()
+        height_spinbox.setRange(1, 8192)
+        height_spinbox.setValue(current_height)
+        height_spinbox.setSingleStep(1)
+        height_spinbox.setMinimumWidth(80)
+        
+        # 添加到水平布局
+        dims_layout.addWidget(width_label)
+        dims_layout.addWidget(width_spinbox)
+        dims_layout.addWidget(height_label)
+        dims_layout.addWidget(height_spinbox)
+        
+        res_layout.addLayout(dims_layout)
+        
+        # 添加锁定长宽比复选框 - 使用水平布局使复选框位于中间
+        lock_layout = QHBoxLayout()
+        aspect_lock_checkbox = QCheckBox(translator.tr("lock_aspect_ratio"))
+        # 如果是自定义尺寸，默认选中锁定长宽比
+        aspect_lock_checkbox.setChecked(True)
+        lock_layout.addStretch(1)
+        lock_layout.addWidget(aspect_lock_checkbox)
+        lock_layout.addStretch(1)
+        res_layout.addLayout(lock_layout)
+        
+        # 添加分辨率组到主布局
+        layout.addWidget(res_group)
+        
+        # 根据当前分辨率设置选择框的默认值
+        if current_width == current_height:
+            if current_width == 512:
+                preset_combo.setCurrentIndex(1)
+            elif current_width == 1024:
+                preset_combo.setCurrentIndex(2)
+            elif current_width == 2048:
+                preset_combo.setCurrentIndex(3)
+            elif current_width == 4096:
+                preset_combo.setCurrentIndex(4)
+            else:
+                preset_combo.setCurrentIndex(0)  # 自定义
+        else:
+            preset_combo.setCurrentIndex(0)  # 自定义
+        
+        # 创建其他设置组
+        other_group = QGroupBox(translator.tr("other_settings"))
+        other_layout = QVBoxLayout()
+        other_group.setLayout(other_layout)
+        
+        # 插值方法选择
+        interp_layout = QHBoxLayout()
+        interp_label = QLabel(translator.tr("scale_interpolation"))
+        interp_label.setFixedWidth(130)
+        
+        interp_combo = QComboBox()
+        interp_combo.addItems([translator.tr("bilinear"), translator.tr("nearest_neighbor")])
+        
+        interp_layout.addWidget(interp_label)
+        interp_layout.addWidget(interp_combo)
+        other_layout.addLayout(interp_layout)
+        
+        # 添加通道朝向选项
+        channel_layout = QHBoxLayout()
+        channel_label = QLabel(translator.tr("channel_orientation"))
+        channel_label.setFixedWidth(130)
+        
+        # 创建复选框容器
+        checkbox_container = QHBoxLayout()
+        checkbox_container.setSpacing(15)  # 设置复选框间距
+        
+        invert_r_checkbox = QCheckBox(translator.tr("invert_r_channel"))
+        invert_g_checkbox = QCheckBox(translator.tr("invert_g_channel"))
+        
+        # 设置初始状态
+        invert_r_checkbox.setChecked(app_settings.invert_r_channel)
+        invert_g_checkbox.setChecked(app_settings.invert_g_channel)
+        
+        checkbox_container.addWidget(invert_r_checkbox)
+        checkbox_container.addWidget(invert_g_checkbox)
+        checkbox_container.addStretch()  # 添加弹性空间
+        
+        channel_layout.addWidget(channel_label)
+        channel_layout.addLayout(checkbox_container)
+        other_layout.addLayout(channel_layout)
+        
+        # 显示当前通道朝向状态
+        r_orient = translator.tr("r_channel_inverted") if app_settings.invert_r_channel else translator.tr("r_channel_normal")
+        g_orient = translator.tr("g_channel_inverted") if app_settings.invert_g_channel else translator.tr("g_channel_normal")
+        orientation_label = QLabel(translator.tr("current_channel_orientation", r_orient=r_orient, g_orient=g_orient))
+        orientation_label.setStyleSheet("color: #666666; font-size: 10px;")
+        other_layout.addWidget(orientation_label)
+        
+        # 添加其他设置组到主布局
+        layout.addWidget(other_group)
+        
+        # 当调整输入值时保持长宽比
+        def update_height_from_width():
+            if aspect_lock_checkbox.isChecked() and preset_combo.currentIndex() == 0:
+                # 根据宽高比计算新的高度
+                new_width = width_spinbox.value()
+                new_height = int(round(new_width / original_aspect_ratio))
+                
+                # 避免递归调用
+                height_spinbox.blockSignals(True)
+                height_spinbox.setValue(new_height)
+                height_spinbox.blockSignals(False)
+                
+        def update_width_from_height():
+            if aspect_lock_checkbox.isChecked() and preset_combo.currentIndex() == 0:
+                # 根据宽高比计算新的宽度
+                new_height = height_spinbox.value()
+                new_width = int(round(new_height * original_aspect_ratio))
+                
+                # 避免递归调用
+                width_spinbox.blockSignals(True)
+                width_spinbox.setValue(new_width)
+                width_spinbox.blockSignals(False)
+        
+        # 连接信号
+        width_spinbox.valueChanged.connect(update_height_from_width)
+        height_spinbox.valueChanged.connect(update_width_from_height)
+        
+        # 切换预设分辨率时的处理
+        def on_preset_changed(index):
+            # 调整数值框信号状态
+            width_spinbox.blockSignals(True)
+            height_spinbox.blockSignals(True)
+            
+            if index == 0:  # 自定义
+                # 恢复为纹理原始尺寸
+                width_spinbox.setValue(current_width)
+                height_spinbox.setValue(current_height)
+                aspect_lock_checkbox.setEnabled(True)  # 启用长宽比锁定
+            else:
+                # 当选择预设尺寸时，宽高相等（正方形贴图）
+                size = int(preset_combo.currentText().split('x')[0])
+                width_spinbox.setValue(size)
+                height_spinbox.setValue(size)
+                aspect_lock_checkbox.setEnabled(False)  # 禁用长宽比锁定（因为预设总是正方形）
+            
+            # 恢复信号连接
+            width_spinbox.blockSignals(False)
+            height_spinbox.blockSignals(False)
+            
+        preset_combo.currentIndexChanged.connect(on_preset_changed)
+        
+        # 按钮
+        button_box = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        button_box.accepted.connect(dialog.accept)
+        button_box.rejected.connect(dialog.reject)
+        layout.addWidget(button_box)
+        
+        # 完成对话框设置
+        dialog.setLayout(layout)
+        
+        # 显示对话框
+        if dialog.exec_() == QDialog.Accepted:
+            # 获取用户设置的分辨率
+            width = width_spinbox.value()
+            height = height_spinbox.value()
+            target_size = (width, height)
+            
+            interp_method = interp_combo.currentText()
+            use_bilinear = interp_method == translator.tr("bilinear")
+            
+            # 获取通道反转设置
+            invert_r = invert_r_checkbox.isChecked()
+            invert_g = invert_g_checkbox.isChecked()
+            
+            # 保存通道反转设置
+            app_settings.set_invert_r_channel(invert_r)
+            app_settings.set_invert_g_channel(invert_g)
+            app_settings.save_settings()
+            
+            # 导入
+            success = self.canvas_widget.import_flowmap(path, target_size, use_bilinear, invert_r, invert_g)
+            
+            if success:
+                self.status_bar.showMessage(translator.tr("flowmap_imported", 
+                                                         path=path, 
+                                                         res=f"{width}x{height}"), 5000)
+            else:
+                self.status_bar.showMessage(translator.tr("import_failed"), 5000)
+
     def update_command_stack_ui(self):
         """更新撤销/重做按钮状态"""
         self.menu_builder.update_action_states()
