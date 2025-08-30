@@ -384,11 +384,34 @@ class ThreeDViewport(QOpenGLWidget):
         self.makeCurrent()
         try:
             self._create_buffers()
+            # 预计算三角形数据与BVH
+            try:
+                self._tri_indices = self._indices.reshape(-1, 3).astype(np.int64, copy=False)
+                if self._tri_indices.size > 0:
+                    P = self._positions.astype(np.float32, copy=False)
+                    tris = self._tri_indices
+                    v0 = P[tris[:, 0]]
+                    v1 = P[tris[:, 1]]
+                    v2 = P[tris[:, 2]]
+                    self._tri_v0 = v0
+                    self._tri_e1 = (v1 - v0).astype(np.float32, copy=False)
+                    self._tri_e2 = (v2 - v0).astype(np.float32, copy=False)
+                    tri_min = np.minimum(np.minimum(v0, v1), v2)
+                    tri_max = np.maximum(np.maximum(v0, v1), v2)
+                    tri_centroid = (v0 + v1 + v2) / 3.0
+                    self._build_bvh(tri_min, tri_max, tri_centroid)
+            except Exception as e:
+                print(f"BVH precompute error: {e}")
+            self._fit_model_matrix()
+            self.model_loaded = True
+            self.update()
+            return True
+        except Exception as e:
+            print(f"load_mesh error: {e}")
+            return False
         finally:
             try: self.doneCurrent()
             except Exception: pass
-        self.model_loaded = True
-        self.update()
 
     def _compute_view_matrix(self):
         cy = np.cos(self._cam_yaw)
@@ -661,9 +684,9 @@ class ThreeDViewport(QOpenGLWidget):
         if not hasattr(self, '_canvas') or self._canvas is None:
             return
         try:
-            # 将UV(v向上)转换成 2D画布的 scene 坐标再转 widget 坐标
-            last_scene = QPointF(float(last_uv[0]), 1.0 - float(last_uv[1]))
-            curr_scene = QPointF(float(curr_uv[0]), 1.0 - float(curr_uv[1]))
+            # 将UV转换成 2D画布的 scene 坐标（scene_y 与 2D 定义保持同向，上为正）
+            last_scene = QPointF(float(last_uv[0]), float(last_uv[1]))
+            curr_scene = QPointF(float(curr_uv[0]), float(curr_uv[1]))
             last_widget = self._canvas.mapFromScene(last_scene)
             curr_widget = self._canvas.mapFromScene(curr_scene)
             self._canvas.apply_brush(last_widget, curr_widget)
@@ -679,26 +702,20 @@ class ThreeDViewport(QOpenGLWidget):
         ray_origin, ray_dir = self._compute_object_space_ray(mouse_pos.x(), mouse_pos.y())
         if ray_origin is None:
             return None
-        closest_t = float('inf')
-        hit_uv = None
+        # 优先使用BVH
+        t, tri_idx, u, v = self._raycast_bvh(ray_origin, ray_dir)
+        if t is None or tri_idx is None:
+            return None
         tris = getattr(self, '_tri_indices', None)
         if tris is None or tris.size == 0:
             return None
-        P = self._positions
+        i0, i1, i2 = tris[int(tri_idx)]
         UV = self._uvs if self._uvs.size else None
         if UV is None:
             return None
-        for i0, i1, i2 in tris:
-            v0 = P[i0]; v1 = P[i1]; v2 = P[i2]
-            t, u, v = self._intersect_moller_trumbore(ray_origin, ray_dir, v0, v1, v2)
-            if t is not None and 1e-6 < t < closest_t:
-                closest_t = t
-                # barycentric to uv
-                w = 1.0 - u - v
-                uv0 = UV[i0]; uv1 = UV[i1]; uv2 = UV[i2]
-                hit_uv = uv0 * w + uv1 * u + uv2 * v
-        if hit_uv is None:
-            return None
+        w = 1.0 - u - v
+        uv0 = UV[int(i0)]; uv1 = UV[int(i1)]; uv2 = UV[int(i2)]
+        hit_uv = uv0 * w + uv1 * u + uv2 * v
         # 无缝处理：在[0,1]范围内取模
         u = float(hit_uv[0]) % 1.0
         v = float(hit_uv[1]) % 1.0
@@ -751,6 +768,180 @@ class ThreeDViewport(QOpenGLWidget):
         if t <= eps:
             return None, None, None
         return t, u, v
+
+    # ------------- BVH ACCELERATION -------------
+    def _build_bvh(self, tri_min, tri_max, tri_centroid, leaf_size: int = 16):
+        """构建平铺数组BVH（中位数分割），用于快速光线相交。"""
+        N = int(tri_min.shape[0])
+        order = np.arange(N, dtype=np.int64)
+        mins = []
+        maxs = []
+        left = []
+        right = []
+        start = []
+        count = []
+
+        def emit_node(bmin, bmax, l, r, s, c):
+            mins.append(bmin)
+            maxs.append(bmax)
+            left.append(l)
+            right.append(r)
+            start.append(s)
+            count.append(c)
+            return len(mins) - 1
+
+        # seed root
+        root_bmin = np.min(tri_min, axis=0) if N > 0 else np.array([0,0,0], dtype=np.float32)
+        root_bmax = np.max(tri_max, axis=0) if N > 0 else np.array([0,0,0], dtype=np.float32)
+        root = emit_node(root_bmin, root_bmax, -1, -1, 0, N)
+        stack = [(root, 0, N)]  # (node_index, l, r)
+        tri_min_local = tri_min
+        tri_max_local = tri_max
+        tri_cent_local = tri_centroid
+        while stack:
+            node_index, l, r = stack.pop()
+            n = r - l
+            if n <= 0:
+                start[node_index] = l
+                count[node_index] = 0
+                continue
+            idx = order[l:r]
+            bmin = np.min(tri_min_local[idx], axis=0)
+            bmax = np.max(tri_max_local[idx], axis=0)
+            mins[node_index] = bmin
+            maxs[node_index] = bmax
+            if n <= leaf_size:
+                start[node_index] = l
+                count[node_index] = n
+                left[node_index] = -1
+                right[node_index] = -1
+                continue
+            # choose axis and split
+            ext = bmax - bmin
+            axis = int(np.argmax(ext))
+            cent = tri_cent_local[idx, axis]
+            median_val = np.median(cent)
+            sort_idx = np.argsort(cent)
+            order[l:r] = idx[sort_idx]
+            k = l + (n // 2)
+            # emit children
+            left_idx = emit_node(np.array([0,0,0], dtype=np.float32), np.array([0,0,0], dtype=np.float32), -1, -1, 0, 0)
+            right_idx = emit_node(np.array([0,0,0], dtype=np.float32), np.array([0,0,0], dtype=np.float32), -1, -1, 0, 0)
+            left[node_index] = left_idx
+            right[node_index] = right_idx
+            start[node_index] = -1
+            count[node_index] = 0
+            # push children to stack
+            stack.append((right_idx, k, r))
+            stack.append((left_idx, l, k))
+
+        self._bvh_min = np.asarray(mins, dtype=np.float32)
+        self._bvh_max = np.asarray(maxs, dtype=np.float32)
+        self._bvh_left = np.asarray(left, dtype=np.int32)
+        self._bvh_right = np.asarray(right, dtype=np.int32)
+        self._bvh_start = np.asarray(start, dtype=np.int32)
+        self._bvh_count = np.asarray(count, dtype=np.int32)
+        self._bvh_order = order.astype(np.int64, copy=False)
+
+    @staticmethod
+    def _ray_aabb_intersect(ro, rd, bmin, bmax):
+        inv = 1.0 / (rd + 1e-30)
+        t0 = (bmin - ro) * inv
+        t1 = (bmax - ro) * inv
+        tmin = np.minimum(t0, t1)
+        tmax = np.maximum(t0, t1)
+        t_enter = np.max(tmin)
+        t_exit = np.min(tmax)
+        if t_exit >= max(0.0, t_enter):
+            return t_enter, t_exit
+        return None, None
+
+    def _raycast_bvh(self, ray_origin, ray_dir):
+        if not hasattr(self, '_bvh_min'):
+            return None, None, None, None
+        bmin = self._bvh_min; bmax = self._bvh_max
+        left = self._bvh_left; right = self._bvh_right
+        start = self._bvh_start; count = self._bvh_count
+        order = self._bvh_order
+        v0 = getattr(self, '_tri_v0', None)
+        e1 = getattr(self, '_tri_e1', None)
+        e2 = getattr(self, '_tri_e2', None)
+        if v0 is None:
+            return None, None, None, None
+        stack = [0]
+        best_t = float('inf')
+        best_idx = -1
+        best_u = 0.0; best_v = 0.0
+        ro = ray_origin.astype(np.float32)
+        rd = ray_dir.astype(np.float32)
+        # debug counters
+        nodes_visited = 0
+        tris_tested = 0
+        while stack:
+            ni = stack.pop()
+            nodes_visited += 1
+            tpair = self._ray_aabb_intersect(ro, rd, bmin[ni], bmax[ni])
+            if tpair[0] is None or tpair[0] > best_t:
+                continue
+            l = left[ni]; r = right[ni]
+            if l < 0 and r < 0:
+                s = start[ni]; c = count[ni]
+                if c <= 0:
+                    continue
+                idx = order[s:s+c]
+                v0_leaf = v0[idx]
+                e1_leaf = e1[idx]
+                e2_leaf = e2[idx]
+                pvec = np.cross(rd, e2_leaf)
+                det = np.einsum('ij,ij->i', e1_leaf, pvec)
+                mask = np.abs(det) > 1e-8
+                if not np.any(mask):
+                    continue
+                inv_det = np.zeros_like(det)
+                inv_det[mask] = 1.0 / det[mask]
+                tvec = ro - v0_leaf
+                u = np.einsum('ij,ij->i', tvec, pvec) * inv_det
+                mask &= (u >= 0.0) & (u <= 1.0)
+                qvec = np.cross(tvec, e1_leaf)
+                v = np.einsum('ij,ij->i', rd[None, :], qvec) * inv_det
+                mask &= (v >= 0.0) & (u + v <= 1.0)
+                t = np.einsum('ij,ij->i', e2_leaf, qvec) * inv_det
+                mask &= (t > 1e-8)
+                tris_tested += int(mask.sum())
+                if np.any(mask):
+                    t_hit = t[mask]
+                    min_idx_local = int(np.argmin(t_hit))
+                    t_val = float(t_hit[min_idx_local])
+                    if t_val < best_t:
+                        masked_idx = idx[mask]
+                        tri_i = int(masked_idx[min_idx_local])
+                        best_t = t_val
+                        best_idx = tri_i
+                        u_hit = float(u[mask][min_idx_local])
+                        v_hit = float(v[mask][min_idx_local])
+                        best_u = u_hit; best_v = v_hit
+            else:
+                if l >= 0: stack.append(l)
+                if r >= 0: stack.append(r)
+                
+        if best_idx >= 0:
+            return best_t, best_idx, best_u, best_v
+        return None, None, None, None
+
+    # Fallback brute-force (debug)
+    def _raycast_bruteforce(self, ro, rd):
+        tris = getattr(self, '_tri_indices', None)
+        if tris is None or tris.size == 0:
+            return None, None, None, None
+        P = self._positions; UV = self._uvs
+        best_t = float('inf'); best = (-1, 0.0, 0.0)
+        for i0, i1, i2 in tris:
+            t, u, v = self._intersect_moller_trumbore(ro, rd, P[i0], P[i1], P[i2])
+            if t is not None and t < best_t:
+                best_t = t; best = (int(i0), float(u), float(v))
+        if best[0] >= 0:
+            return best_t, best[0], best[1], best[2]
+        return None, None, None, None
 
     # Coordinate cursor between 2D/3D: hide 2D brush when cursor enters 3D; restore on leave
     def enterEvent(self, event):

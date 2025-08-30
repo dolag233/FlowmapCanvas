@@ -1946,11 +1946,11 @@ class FlowmapCanvas(QOpenGLWidget):
         1. 从 shader 公式反推: TexCoords = (mainTexCoords + u_mainViewOffset) * u_mainViewScale
         2. 保持与 mapToScene 和 shader 一致的坐标系约定
         """
-        # 应用主视图缩放和偏移的逆变换，遵循 shader 的计算方式
+        # 应用主视图缩放和偏移的逆变换，严格与 mapToScene 互为逆
+        # mapToScene: scene_x = norm_x/scale - offset_x => norm_x = (scene_x + offset_x) * scale
+        # mapToScene: scene_y = (1 - norm_y)/scale - offset_y => norm_y = 1 - (scene_y + offset_y) * scale
         norm_x = (scene_pos.x() + self.main_view_offset.x()) * self.main_view_scale
-
-        # Y 轴处理保持与 mapToScene 一致
-        norm_y = (scene_pos.y() + self.main_view_offset.y()) * self.main_view_scale
+        norm_y = 1.0 - (scene_pos.y() + self.main_view_offset.y()) * self.main_view_scale
 
         # 将归一化坐标转换回窗口坐标
         widget_x = norm_x * self.width()
