@@ -22,8 +22,8 @@ TRANSLATIONS = {
     
     # 文件菜单项
     "import_background": {"zh_CN": "导入底图", "en_US": "Import Background"},
-    "import_flowmap": {"zh_CN": "导入Flowmap", "en_US": "Import Flowmap"},
-    "export_flowmap": {"zh_CN": "导出Flowmap", "en_US": "Export Flowmap"},
+    "import_flowmap": {"zh_CN": "导入流向贴图", "en_US": "Import Flowmap"},
+    "export_flowmap": {"zh_CN": "导出流向贴图", "en_US": "Export Flowmap"},
     "import_guide_overlay": {"zh_CN": "导入参考贴图", "en_US": "Import Reference Overlay"},
     
     # 编辑菜单项
