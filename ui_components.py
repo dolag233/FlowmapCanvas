@@ -39,6 +39,10 @@ class MenuBuilder:
         # 设置菜单
         settings_menu = menubar.addMenu(translator.tr("menu_settings"))
         self._build_settings_menu(settings_menu)
+
+        # 视口菜单
+        viewport_menu = menubar.addMenu(translator.tr("menu_viewport"))
+        self._build_viewport_menu(viewport_menu)
         
         return menubar
         
@@ -59,6 +63,11 @@ class MenuBuilder:
         import_overlay_action.triggered.connect(self.main_window.import_overlay_image)
         menu.addAction(import_overlay_action)
 
+        # 导入3D模型
+        import_model_action = QAction(translator.tr("import_3d_model"), self.main_window)
+        import_model_action.triggered.connect(self.main_window.import_3d_model)
+        menu.addAction(import_model_action)
+
         # 导出Flowmap
         export_action = QAction(translator.tr("export_flowmap"), self.main_window)
         export_action.triggered.connect(self.main_window.export_flowmap)
@@ -67,6 +76,7 @@ class MenuBuilder:
         self.actions["import_background"] = import_action
         self.actions["import_flowmap"] = import_flowmap_action
         self.actions["import_guide_overlay"] = import_overlay_action
+        self.actions["import_3d_model"] = import_model_action
         self.actions["export_flowmap"] = export_action
         
     def _build_edit_menu(self, menu):
@@ -113,6 +123,17 @@ class MenuBuilder:
         self.actions["toggle_theme"] = theme_action
         self.actions["high_res_mode"] = high_res_action
         self.actions["toggle_language"] = language_action
+
+    def _build_viewport_menu(self, menu):
+        """构建视口菜单"""
+        toggle_3d_action = QAction(translator.tr("toggle_3d_view"), self.main_window)
+        toggle_3d_action.setCheckable(True)
+        toggle_3d_action.setChecked(False)
+        toggle_3d_action.triggered.connect(self.main_window.toggle_3d_view)
+        menu.addAction(toggle_3d_action)
+
+        self.actions["toggle_3d_view"] = toggle_3d_action
+        
         
     def get_action(self, name):
         """获取指定名称的操作"""

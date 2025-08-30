@@ -147,67 +147,72 @@ class FlowmapCanvas(QOpenGLWidget):
         self.main_view_offset_correction_y = 0.0  # Y方向的偏移校正
         self.preview_aspect_ratio = 1.0  # 预览窗口的宽高比，默认为1:1
 
-        # Flowmap 数据 (H, W, RGBA), float32, [0, 1] 范围
-        # R = (flow_x + 1) / 2
-        # G = (flow_y + 1) / 2
-        # B = 0
-        # A = 1 (虽然未使用，但保持4通道以便于OpenGL处理)
+        # Flowmap 数据 (H, W, RGBA)
         self.flowmap_data = np.zeros((self.texture_size[1], self.texture_size[0], 4), dtype=np.float32)
-        self.flowmap_data[..., 0] = 0.5 # 初始化为 (0, 0) 向量 -> (0.5, 0.5) 颜色
+        self.flowmap_data[..., 0] = 0.5
         self.flowmap_data[..., 1] = 0.5
-        self.flowmap_data[..., 3] = 1.0 # Alpha
+        self.flowmap_data[..., 3] = 1.0
 
-        self.flowmap_texture_id = 0 # 使用 0 表示无效 ID
-        self.base_texture_id = 0 # 使用 0 表示无效 ID
+        self.flowmap_texture_id = 0
+        self.base_texture_id = 0
         self.has_base_map = False
 
-        self.shader_program_id = 0 # 使用 shader program ID
-        self.preview_shader_program_id = 0 # 预览 shader program ID
-        self.overlay_shader_program_id = 0 # 参考贴图 shader program ID
+        self.shader_program_id = 0
+        self.preview_shader_program_id = 0
+        self.overlay_shader_program_id = 0
         self.overlay_texture_id = 0
         self.overlay_opacity = 0.5
         self.has_overlay = False
-        self.vao = 0 # 使用 0 表示无效 ID
-        self.vbo = 0 # 使用 0 表示无效 ID
+        # UV overlay state
+        self.uv_overlay_tex = 0
+        self.uv_overlay_enabled = False
+        self.uv_overlay_opacity = 0.7
+
+        self.vao = 0
+        self.vbo = 0
 
         # 顶点数据 (全屏四边形)
         self.quad_vertices = np.array([
-            # 位置        # 纹理坐标
             -1.0,  1.0,  0.0, 1.0,
             -1.0, -1.0,  0.0, 0.0,
              1.0,  1.0,  1.0, 1.0,
              1.0, -1.0,  1.0, 0.0,
         ], dtype=np.float32)
 
-        # 3D 模型相关 (保持原样，但知道它们不完整)
+        # 3D 模型相关（保留）
         self.uv_data = None
-        self.uv_vbo = 0 # 初始化为0，表示无效ID
+        self.uv_vbo = 0
 
         # Flow effect parameters
-        self.flow_speed = 0.5 # 调整默认速度
-        self.flow_distortion = 0.3 # 调整默认失真强度
+        self.flow_speed = 0.5
+        self.flow_distortion = 0.3
         self.anim_time = 0.0
         self.last_anim_update_time = time.time()
-        self.is_animating = True # 控制动画是否播放
-        self.start_time = time.time()  # 动画开始时间
+        self.is_animating = True
+        self.start_time = time.time()
 
         # Timer for animation update
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_animation)
-        self.timer.start(16) # ~60 FPS
+        self.timer.start(16)
 
-        # 设置焦点策略以接收键盘事件 (如果需要)
         self.setFocusPolicy(Qt.StrongFocus)
-        self.setMouseTracking(True) # 接收 mouseMoveEvent 即使没有按下按钮
+        self.setMouseTracking(True)
 
-        # 当前笔刷数据
         self.brush_data = BrushData()
-
-        # 布尔值标志仍然保留，但不再是主要状态控制器
         self.is_drawing = False
         self.is_erasing = False
         self.is_dragging_preview = False
         self.is_dragging_main_view = False
+
+        self.uv_wire_program = 0
+        self.uv_wire_vao = 0
+        self.uv_wire_vbo = 0
+        self.uv_wire_ebo = 0
+        self.uv_wire_index_count = 0
+        self.uv_wire_opacity = 0.7
+        self.uv_wire_enabled = False
+        self.uv_wire_line_width = 1.0
 
     def update_animation(self):
         """更新动画状态"""
@@ -400,19 +405,17 @@ class FlowmapCanvas(QOpenGLWidget):
             self.preview_shader_program_id = 0
         if self.preview_shader_program_id == 0:
             QMessageBox.critical(self, "Shader Error", "Failed to compile preview shader.")
-        # 创建参考贴图 shader
+
+        # UV wire program
         try:
-            with open("overlay_shader.glsl", encoding="utf-8") as f:
-                overlay_frag_source = f.read()
+            with open("uv_wire.vert", encoding="utf-8") as f:
+                uv_vs = f.read()
+            with open("uv_wire.frag", encoding="utf-8") as f:
+                uv_fs = f.read()
+            self.uv_wire_program = create_shader_program(uv_vs, uv_fs)
         except Exception as e:
-            print(f"Failed to read overlay_shader.glsl: {e}")
-            overlay_frag_source = None
-        if overlay_frag_source:
-            self.overlay_shader_program_id = create_shader_program(VERTEX_SHADER_SOURCE, overlay_frag_source)
-        else:
-            self.overlay_shader_program_id = 0
-        if self.overlay_shader_program_id == 0:
-            QMessageBox.critical(self, "Shader Error", "Failed to compile overlay shader.")
+            print(f"Failed to read UV wire shaders: {e}")
+            self.uv_wire_program = 0
 
     def paintGL(self):
         """绘制OpenGL内容"""
@@ -473,12 +476,40 @@ class FlowmapCanvas(QOpenGLWidget):
             glBindTexture(GL_TEXTURE_2D, 0)
             glUseProgram(0)
 
+        # Draw UV wire overlay (full-screen, over base/flowmap)
+        if getattr(self, 'uv_wire_enabled', False) and self.uv_wire_program != 0 and getattr(self, 'uv_wire_index_count', 0) > 0:
+            try:
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+                glViewport(0, 0, self.width(), self.height())
+                glUseProgram(self.uv_wire_program)
+                ms = glGetUniformLocation(self.uv_wire_program, "u_mainViewScale")
+                if ms != -1:
+                    glUniform1f(ms, self.main_view_scale)
+                mo = glGetUniformLocation(self.uv_wire_program, "u_mainViewOffset")
+                if mo != -1:
+                    glUniform2f(mo, self.main_view_offset.x(), self.main_view_offset.y())
+                col = glGetUniformLocation(self.uv_wire_program, "u_color")
+                if col != -1:
+                    glUniform3f(col, 0.95, 0.5, 0.1)
+                op = glGetUniformLocation(self.uv_wire_program, "u_opacity")
+                if op != -1:
+                    glUniform1f(op, float(getattr(self, 'uv_wire_opacity', 0.7)))
+                glBindVertexArray(self.uv_wire_vao)
+                glLineWidth(float(getattr(self, 'uv_wire_line_width', 1.0)))
+                glDrawElements(GL_LINES, int(self.uv_wire_index_count), GL_UNSIGNED_INT, None)
+                glBindVertexArray(0)
+            except Exception as e:
+                print(f"Error drawing UV wire: {e}")
+            finally:
+                glUseProgram(0)
+                glDisable(GL_BLEND)
+
         # draw overlay image (if any) over MAIN VIEW (full-screen), not the small preview
         if self.has_overlay and self.overlay_texture_id != 0 and self.overlay_shader_program_id != 0:
             try:
                 glEnable(GL_BLEND)
                 glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
                 glViewport(0, 0, self.width(), self.height())
                 glUseProgram(self.overlay_shader_program_id)
 
@@ -510,21 +541,17 @@ class FlowmapCanvas(QOpenGLWidget):
                 glBindTexture(GL_TEXTURE_2D, 0)
                 glDisable(GL_BLEND)
 
-        # draw preview overlay (top-right) with alpha blending
+        # draw preview overlay (top-right small viewport) LAST
         pv_w = int(self.preview_size.width() * self.width())
         pv_h = int(self.preview_size.height() * self.height())
         pv_x = int(self.preview_pos.x() * self.width())
-        # preview_pos 的 y 以顶部为基准，需要转换为自底向上的像素坐标
         pv_y = int((1.0 - self.preview_pos.y() - self.preview_size.height()) * self.height())
-
         try:
             glEnable(GL_BLEND)
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
             glViewport(pv_x, pv_y, pv_w, pv_h)
             glUseProgram(self.preview_shader_program_id)
 
-            # Bind flowmap to unit 0 for preview
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, self.flowmap_texture_id if self.flowmap_texture_id != 0 else 0)
             loc_flow = glGetUniformLocation(self.preview_shader_program_id, "flowMap")
@@ -2216,3 +2243,56 @@ class FlowmapCanvas(QOpenGLWidget):
         self.flowmap_updated.emit()
 
         print(f"已填充整个flowmap为颜色: ({r_value:.2f}, {g_value:.2f}, 0.0, 1.0)")
+
+    def set_uv_overlay_data(self, uvs_np, indices_np):
+        """接收3D模型的UV与三角索引，构建线框（边）并上传到GL buffer。
+        uvs_np: (N,2) float32; indices_np: (M,) uint32 (triangles)
+        """
+        try:
+            if uvs_np is None or indices_np is None or uvs_np.size == 0 or indices_np.size == 0:
+                self.uv_wire_enabled = False
+                return
+            self.makeCurrent()
+            # 提取三角形边作为线，构建线索引
+            tris = indices_np.reshape(-1, 3)
+            edges = np.concatenate([
+                tris[:, [0,1]], tris[:, [1,2]], tris[:, [2,0]]
+            ], axis=0).astype(np.uint32)
+            # 去重（无向边）
+            a = np.minimum(edges[:,0], edges[:,1])
+            b = np.maximum(edges[:,0], edges[:,1])
+            packed = a.astype(np.uint64) << 32 | b.astype(np.uint64)
+            uniq, idx = np.unique(packed, return_index=True)
+            unique_edges = edges[idx]
+            line_indices = unique_edges.flatten().astype(np.uint32)
+            # 创建/更新VAO/VBO/EBO（确保为有效整型句柄）
+            if not getattr(self, 'uv_wire_vao', 0):
+                self.uv_wire_vao = int(glGenVertexArrays(1))
+            if not getattr(self, 'uv_wire_vbo', 0):
+                self.uv_wire_vbo = int(glGenBuffers(1))
+            if not getattr(self, 'uv_wire_ebo', 0):
+                self.uv_wire_ebo = int(glGenBuffers(1))
+            glBindVertexArray(self.uv_wire_vao)
+            glBindBuffer(GL_ARRAY_BUFFER, self.uv_wire_vbo)
+            uvs_np = uvs_np.astype(np.float32, copy=False)
+            glBufferData(GL_ARRAY_BUFFER, uvs_np.nbytes, uvs_np, GL_STATIC_DRAW)
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, self.uv_wire_ebo)
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, line_indices.nbytes, line_indices, GL_STATIC_DRAW)
+            loc_uv = 0
+            if self.uv_wire_program:
+                loc_uv = glGetAttribLocation(self.uv_wire_program, b"aUV")
+                if loc_uv < 0:
+                    loc_uv = 0
+            glEnableVertexAttribArray(loc_uv)
+            glVertexAttribPointer(loc_uv, 2, GL_FLOAT, GL_FALSE, 2 * 4, ctypes.c_void_p(0))
+            glBindVertexArray(0)
+            self.uv_wire_index_count = int(line_indices.size)
+            self.uv_wire_enabled = True
+        except Exception as e:
+            print(f"set_uv_overlay_data error: {e}")
+            self.uv_wire_enabled = False
+        finally:
+            try:
+                self.doneCurrent()
+            except Exception:
+                pass

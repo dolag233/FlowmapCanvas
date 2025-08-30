@@ -17,6 +17,7 @@ from brush_cursor import BrushCursorWidget
 from app_settings import app_settings
 from ui_components import MenuBuilder
 from panel_manager import PanelManager
+from three_d_viewport import ThreeDViewport
 import numpy as np
 
 
@@ -75,6 +76,11 @@ class MainWindow(QMainWindow):
         self.canvas_widget = FlowmapCanvas()
         self.canvas_widget.setMinimumSize(800, 600)
         self.setCentralWidget(self.canvas_widget)
+        # 固定Dock布局，防止相对排布变化
+        try:
+            self.setDockNestingEnabled(False)
+        except Exception:
+            pass
         # 记录当前鼠标位置用于笔刷预览
         self.current_mouse_pos = QPointF(0, 0)
         self.canvas_widget.setMouseTracking(True)
@@ -121,6 +127,10 @@ class MainWindow(QMainWindow):
         
         # 应用主题样式
         self.apply_modern_style()
+
+        # 3D 视口（延迟创建）
+        self._three_d_dock = None
+        self._three_d_widget = None
 
     def try_load_default_background(self):
         """尝试加载默认底图（仅在OpenGL初始化完成后执行）"""
@@ -259,6 +269,123 @@ class MainWindow(QMainWindow):
         self.canvas_widget.overlay_opacity = float(opacity)
         self.canvas_widget.update()
 
+    def toggle_3d_view(self, checked):
+        from PyQt5.QtWidgets import QDockWidget
+        if checked:
+            if self._three_d_dock is None:
+                self._three_d_widget = ThreeDViewport(self)
+                self._three_d_widget.set_canvas(self.canvas_widget)
+                dock = QDockWidget(translator.tr("menu_viewport"), self)
+                dock.setWidget(self._three_d_widget)
+                # 固定Dock：只允许关闭，不允许拖拽/浮动，且仅位于右侧
+                dock.setAllowedAreas(Qt.RightDockWidgetArea)
+                dock.setFeatures(QDockWidget.DockWidgetClosable)
+                self.addDockWidget(Qt.RightDockWidgetArea, dock)
+                self._three_d_dock = dock
+                # 延迟一次，用布局稳定后的分配设置初始尺寸
+                QTimer.singleShot(0, self._set_initial_3d_dock_size)
+            else:
+                self._three_d_dock.show()
+                # 再次显示时保证有一个合理的初始占比
+                QTimer.singleShot(0, self._set_initial_3d_dock_size)
+            # 显示UV覆盖组并启用
+            uv_group = self.panel_manager.get_control("uv_group")
+            if uv_group:
+                uv_group.setVisible(True)
+            self.canvas_widget.uv_wire_enabled = True
+        else:
+            if self._three_d_dock is not None:
+                self._three_d_dock.hide()
+                self._schedule_canvas_layout_refresh()
+            uv_group = self.panel_manager.get_control("uv_group")
+            if uv_group:
+                uv_group.setVisible(False)
+            self.canvas_widget.uv_wire_enabled = False
+
+    def _set_initial_3d_dock_size(self):
+        try:
+            if not self._three_d_dock:
+                return
+            # 以2D画布高度为基准，初始化3D Dock宽高
+            base = max(200, int(self.canvas_widget.height()))
+            # 设置最小宽度，避免过小
+            self._three_d_dock.setMinimumWidth(min(800, base))
+            # 使用 resizeDocks 设置宽度占比
+            self.resizeDocks([self._three_d_dock], [base], Qt.Horizontal)
+            # 设置 ThreeDViewport 的最小高度，力求与2D高度匹配
+            self._three_d_widget.setMinimumHeight(base)
+            # 扩展主窗口总宽度，防止中心区域被挤压折叠
+            current_dock_w = max(0, int(self._three_d_dock.width()))
+            target_dock_w = base
+            add_w = max(0, target_dock_w - current_dock_w)
+            if add_w > 0:
+                new_w = int(self.width() + add_w)
+                new_h = max(int(self.height()), base + 80)
+                self.resize(new_w, new_h)
+            # 强制一次布局刷新
+            self._three_d_widget.updateGeometry()
+            self._schedule_canvas_layout_refresh()
+        except Exception as e:
+            print(f"set_initial_3d_dock_size error: {e}")
+
+    def import_3d_model(self):
+        from PyQt5.QtWidgets import QFileDialog
+        from mesh_loader import load_obj
+        filter_str = "3D Models (*.obj);;" + translator.tr("image_files")
+        path, _ = QFileDialog.getOpenFileName(self, translator.tr("import_3d_model"), '', filter_str)
+        if not path:
+            return
+        # 导入后立刻打开/显示3D视口
+        if self._three_d_widget is None:
+            self.toggle_3d_view(True)
+        else:
+            if self._three_d_dock is not None:
+                self._three_d_dock.show()
+        try:
+            mesh = load_obj(path)
+            ok = mesh is not None and mesh.positions.size > 0 and mesh.indices.size > 0
+            if ok:
+                self._three_d_widget.load_mesh(mesh)
+                self.status_bar.showMessage(translator.tr("import_success"), 3000)
+                # 推送UV数据到2D
+                try:
+                    self.canvas_widget.set_uv_overlay_data(mesh.uvs, mesh.indices)
+                    self.canvas_widget.uv_wire_enabled = True
+                    self.canvas_widget.update()
+                except Exception as e:
+                    print(f"Failed to set UV overlay data: {e}")
+            else:
+                self.status_bar.showMessage(translator.tr("import_failed"), 3000)
+        except Exception as e:
+            print(f"Failed to load mesh: {e}")
+            self.status_bar.showMessage(translator.tr("import_failed"), 3000)
+
+    def _schedule_canvas_layout_refresh(self):
+        try:
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(0, self._refresh_canvas_layout)
+        except Exception:
+            try:
+                self._refresh_canvas_layout()
+            except Exception:
+                pass
+
+    def _refresh_canvas_layout(self):
+        try:
+            # 强制根据当前窗口/布局更新2D画布的纵横比与预览尺寸
+            self.canvas_widget.update_preview_size()
+            self.canvas_widget.update_aspect_ratio()
+            if hasattr(self.canvas_widget, 'resized'):
+                self.canvas_widget.resized.emit()
+            self.canvas_widget.update()
+        except Exception:
+            pass
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 任何主窗口尺寸变化后，调度2D布局刷新以避免拉伸
+        self._schedule_canvas_layout_refresh()
+
     def _set_slider_value_no_signal(self, slider, value):
         """安全设置slider的值，不触发信号"""
         if slider is None:
@@ -390,6 +517,24 @@ class MainWindow(QMainWindow):
             )
         )
 
+        # UV overlay params
+        self.param_registry.register(
+            "uv_wire_opacity",
+            read_fn=lambda: float(c.uv_wire_opacity),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "uv_wire_opacity", float(v)),
+                None
+            )
+        )
+        self.param_registry.register(
+            "uv_wire_line_width",
+            read_fn=lambda: float(c.uv_wire_line_width),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "uv_wire_line_width", float(v)),
+                None
+            )
+        )
+
         # overlay_opacity (0~1)
         self.param_registry.register(
             "overlay_opacity",
@@ -420,7 +565,7 @@ class MainWindow(QMainWindow):
                 old_value = new_value
             if old_value != new_value and self.param_registry.has_key("brush_radius"):
                 cmd = ParameterChangeCommand(self.param_registry, "brush_radius", old_value, new_value)
-                self.command_mgr.execute_command(cmd)
+            self.command_mgr.execute_command(cmd)
 
     def on_brush_size_released(self):
         slider = self.panel_manager.get_control("brush_size_slider")
@@ -449,7 +594,7 @@ class MainWindow(QMainWindow):
                 old_value = new_value
             if abs(old_value - new_value) > 1e-6 and self.param_registry.has_key("brush_strength"):
                 cmd = ParameterChangeCommand(self.param_registry, "brush_strength", old_value, new_value)
-                self.command_mgr.execute_command(cmd)
+            self.command_mgr.execute_command(cmd)
 
     def on_flow_strength_released(self):
         slider = self.panel_manager.get_control("flow_strength_slider")

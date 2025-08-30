@@ -39,6 +39,7 @@ class PanelManager:
         self._create_mode_group(layout)
         self._create_flow_group(layout)
         self._create_channel_orientation_group(layout)
+        self._create_uv_overlay_group(layout)
         self._create_overlay_group(layout)
         self._create_fill_controls(layout)
         layout.addStretch()  # 添加伸缩空间，使其他组件靠上
@@ -248,6 +249,98 @@ class PanelManager:
         self.controls["orientation_label"] = orientation_label
         
         parent_layout.addWidget(channel_group)
+
+    def _create_uv_overlay_group(self, parent_layout):
+        """创建UV覆盖设置组（仅3D打开时显示）"""
+        from localization import translator
+        uv_group = QGroupBox(translator.tr("uv_overlay"))
+        layout = QVBoxLayout()
+        layout.setSpacing(8)
+
+        # Opacity
+        opacity_label = QLabel(f"{translator.tr('uv_opacity')}: 0.70")
+        opacity_slider = QSlider(Qt.Horizontal)
+        opacity_slider.setMinimum(0)
+        opacity_slider.setMaximum(100)
+        opacity_slider.setValue(int(round(float(getattr(self.main_window.canvas_widget, 'uv_wire_opacity', 0.7)) * 100)))
+
+        def on_opacity_changed(value):
+            opacity = value / 100.0
+            opacity_label.setText(f"{translator.tr('uv_opacity')}: {opacity:.2f}")
+            # 通过注册表应用，支持撤销
+            try:
+                if hasattr(self.main_window, 'param_registry') and self.main_window.param_registry:
+                    self.main_window.param_registry.apply("uv_wire_opacity", opacity, transient=True)
+                else:
+                    self.main_window.canvas_widget.uv_wire_opacity = float(opacity)
+                self.main_window.canvas_widget.update()
+            except Exception:
+                pass
+
+        opacity_slider.sliderPressed.connect(lambda: self._record_old_value("uv_wire_opacity"))
+        opacity_slider.valueChanged.connect(on_opacity_changed)
+        opacity_slider.sliderReleased.connect(lambda: self._commit_param_change("uv_wire_opacity", opacity_slider.value() / 100.0))
+
+        # Line width
+        width_label = QLabel(f"{translator.tr('uv_line_width')}: 1.00")
+        width_slider = QSlider(Qt.Horizontal)
+        width_slider.setMinimum(2)   # 1.0 -> 2*0.5
+        width_slider.setMaximum(10)  # 5.0 -> 10*0.5
+        # map current to scaled integer
+        current_lw = float(getattr(self.main_window.canvas_widget, 'uv_wire_line_width', 1.0))
+        width_slider.setValue(int(round(current_lw / 0.5)))
+
+        def on_width_changed(v):
+            lw = float(v) * 0.5
+            width_label.setText(f"{translator.tr('uv_line_width')}: {lw:.2f}")
+            try:
+                if hasattr(self.main_window, 'param_registry') and self.main_window.param_registry:
+                    self.main_window.param_registry.apply("uv_wire_line_width", lw, transient=True)
+                else:
+                    self.main_window.canvas_widget.uv_wire_line_width = lw
+                self.main_window.canvas_widget.update()
+            except Exception:
+                pass
+
+        width_slider.sliderPressed.connect(lambda: self._record_old_value("uv_wire_line_width"))
+        width_slider.valueChanged.connect(on_width_changed)
+        width_slider.sliderReleased.connect(lambda: self._commit_param_change("uv_wire_line_width", float(width_slider.value()) * 0.5))
+
+        layout.addWidget(opacity_label)
+        layout.addWidget(opacity_slider)
+        layout.addWidget(width_label)
+        layout.addWidget(width_slider)
+        uv_group.setLayout(layout)
+        parent_layout.addWidget(uv_group)
+
+        # 记录控件并默认隐藏（由MainWindow在3D开关时显示/隐藏）
+        self.controls["uv_group"] = uv_group
+        self.controls["uv_opacity_label"] = opacity_label
+        self.controls["uv_opacity_slider"] = opacity_slider
+        self.controls["uv_width_label"] = width_label
+        self.controls["uv_width_slider"] = width_slider
+        uv_group.setVisible(False)
+
+    def _record_old_value(self, key):
+        try:
+            old = getattr(self.main_window.canvas_widget, key)
+            self.main_window._old_param_values[key] = old
+        except Exception:
+            pass
+
+    def _commit_param_change(self, key, new_value):
+        try:
+            from commands import ParameterChangeCommand
+            old_value = self.main_window._old_param_values.get(key, new_value)
+            if hasattr(self.main_window, 'param_registry') and self.main_window.param_registry and self.main_window.param_registry.has_key(key):
+                if old_value != new_value:
+                    cmd = ParameterChangeCommand(self.main_window.param_registry, key, old_value, new_value)
+                    self.main_window.command_mgr.execute_command(cmd)
+            else:
+                # fallback:直接赋值
+                setattr(self.main_window.canvas_widget, key, new_value)
+        except Exception as e:
+            print(f"commit_param_change error: {e}")
 
     def _create_overlay_group(self, parent_layout):
         """创建参考贴图设置组"""

@@ -19,12 +19,15 @@ TRANSLATIONS = {
     "menu_file": {"zh_CN": "文件", "en_US": "File"},
     "menu_edit": {"zh_CN": "编辑", "en_US": "Edit"},
     "menu_settings": {"zh_CN": "设置", "en_US": "Settings"},
+    "menu_viewport": {"zh_CN": "视口", "en_US": "Viewport"},
     
     # 文件菜单项
     "import_background": {"zh_CN": "导入底图", "en_US": "Import Background"},
     "import_flowmap": {"zh_CN": "导入流向贴图", "en_US": "Import Flowmap"},
     "export_flowmap": {"zh_CN": "导出流向贴图", "en_US": "Export Flowmap"},
     "import_guide_overlay": {"zh_CN": "导入参考贴图", "en_US": "Import Reference Overlay"},
+    "toggle_3d_view": {"zh_CN": "显示3D视口", "en_US": "Show 3D Viewport"},
+    "import_3d_model": {"zh_CN": "导入3D模型", "en_US": "Import 3D Model"},
     
     # 编辑菜单项
     "undo": {"zh_CN": "撤销", "en_US": "Undo"},
@@ -53,7 +56,10 @@ TRANSLATIONS = {
     "flow_speed": {"zh_CN": "流动速度", "en_US": "Flow Speed"},
     "flow_distance": {"zh_CN": "流动距离", "en_US": "Flow Distance"},
     "overlay_settings": {"zh_CN": "参考贴图", "en_US": "Reference Overlay"},
-    "overlay_opacity": {"zh_CN": "不透明度", "en_US": "Opacity"},
+    "overlay_opacity": {"zh_CN": "透明度", "en_US": "Opacity"},
+    "uv_overlay": {"zh_CN": "UV覆盖", "en_US": "UV Overlay"},
+    "uv_opacity": {"zh_CN": "不透明度", "en_US": "Opacity"},
+    "uv_line_width": {"zh_CN": "线条宽度", "en_US": "Line Width"},
     
     # 按钮
     "fill_canvas": {"zh_CN": "填充画布", "en_US": "Fill Canvas"},
