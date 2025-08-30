@@ -420,7 +420,7 @@ class FlowmapCanvas(QOpenGLWidget):
         # 检查 shader program ID 和 VAO 是否有效
         if self.shader_program_id == 0 or self.preview_shader_program_id == 0 or self.vao == 0:
             return
-        # First pass: draw main shader full-screen
+        # draw main shader full-screen
         try:
             glViewport(0, 0, self.width(), self.height())
 
@@ -473,45 +473,7 @@ class FlowmapCanvas(QOpenGLWidget):
             glBindTexture(GL_TEXTURE_2D, 0)
             glUseProgram(0)
 
-        # Second pass: draw preview overlay (top-right) with alpha blending
-        # 计算预览区域像素矩形（右上角），保持底图纵横比
-        pv_w = int(self.preview_size.width() * self.width())
-        pv_h = int(self.preview_size.height() * self.height())
-        pv_x = int(self.preview_pos.x() * self.width())
-        # preview_pos 的 y 以顶部为基准，需要转换为自底向上的像素坐标
-        pv_y = int((1.0 - self.preview_pos.y() - self.preview_size.height()) * self.height())
-
-        try:
-            glEnable(GL_BLEND)
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-
-            glViewport(pv_x, pv_y, pv_w, pv_h)
-            glUseProgram(self.preview_shader_program_id)
-
-            # Bind flowmap to unit 0 for preview
-            glActiveTexture(GL_TEXTURE0)
-            glBindTexture(GL_TEXTURE_2D, self.flowmap_texture_id if self.flowmap_texture_id != 0 else 0)
-            loc_flow = glGetUniformLocation(self.preview_shader_program_id, "flowMap")
-            if loc_flow != -1:
-                glUniform1i(loc_flow, 0)
-            loc_off = glGetUniformLocation(self.preview_shader_program_id, "u_previewOffset")
-            if loc_off != -1:
-                glUniform2f(loc_off, self.preview_offset.x(), self.preview_offset.y())
-            loc_rep = glGetUniformLocation(self.preview_shader_program_id, "u_previewRepeat")
-            if loc_rep != -1:
-                glUniform1i(loc_rep, 1 if self.preview_repeat else 0)
-
-            glBindVertexArray(self.vao)
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
-            glBindVertexArray(0)
-        except Exception as e:
-            print(f"Error drawing preview overlay: {e}")
-        finally:
-            glUseProgram(0)
-            glBindTexture(GL_TEXTURE_2D, 0)
-            glDisable(GL_BLEND)
-
-        # Third pass: draw overlay image (if any) over MAIN VIEW (full-screen), not the small preview
+        # draw overlay image (if any) over MAIN VIEW (full-screen), not the small preview
         if self.has_overlay and self.overlay_texture_id != 0 and self.overlay_shader_program_id != 0:
             try:
                 glEnable(GL_BLEND)
@@ -547,6 +509,43 @@ class FlowmapCanvas(QOpenGLWidget):
                 glUseProgram(0)
                 glBindTexture(GL_TEXTURE_2D, 0)
                 glDisable(GL_BLEND)
+
+        # draw preview overlay (top-right) with alpha blending
+        pv_w = int(self.preview_size.width() * self.width())
+        pv_h = int(self.preview_size.height() * self.height())
+        pv_x = int(self.preview_pos.x() * self.width())
+        # preview_pos 的 y 以顶部为基准，需要转换为自底向上的像素坐标
+        pv_y = int((1.0 - self.preview_pos.y() - self.preview_size.height()) * self.height())
+
+        try:
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+            glViewport(pv_x, pv_y, pv_w, pv_h)
+            glUseProgram(self.preview_shader_program_id)
+
+            # Bind flowmap to unit 0 for preview
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, self.flowmap_texture_id if self.flowmap_texture_id != 0 else 0)
+            loc_flow = glGetUniformLocation(self.preview_shader_program_id, "flowMap")
+            if loc_flow != -1:
+                glUniform1i(loc_flow, 0)
+            loc_off = glGetUniformLocation(self.preview_shader_program_id, "u_previewOffset")
+            if loc_off != -1:
+                glUniform2f(loc_off, self.preview_offset.x(), self.preview_offset.y())
+            loc_rep = glGetUniformLocation(self.preview_shader_program_id, "u_previewRepeat")
+            if loc_rep != -1:
+                glUniform1i(loc_rep, 1 if self.preview_repeat else 0)
+
+            glBindVertexArray(self.vao)
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+            glBindVertexArray(0)
+        except Exception as e:
+            print(f"Error drawing preview overlay: {e}")
+        finally:
+            glUseProgram(0)
+            glBindTexture(GL_TEXTURE_2D, 0)
+            glDisable(GL_BLEND)
 
     def resizeGL(self, w, h):
         """处理窗口大小变化事件，确保严格等比例缩放"""
