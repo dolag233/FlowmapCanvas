@@ -91,6 +91,7 @@ def check_resources(project_root):
     """检查必要的资源文件是否存在"""
     resources_to_check = [
         "flow_shader.glsl",
+        "preview_shader.glsl",
         "background.png",
         "style.qss",
         "img",

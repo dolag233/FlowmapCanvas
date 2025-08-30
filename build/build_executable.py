@@ -15,6 +15,7 @@ def copy_resources(dist_dir, project_root):
     """复制所需资源文件到打包目录"""
     resources = [
         "flow_shader.glsl",
+        "preview_shader.glsl",
         "background.png",
         "style.qss",
         "app_settings.json",

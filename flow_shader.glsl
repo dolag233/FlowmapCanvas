@@ -9,25 +9,15 @@ uniform bool u_hasBaseMap = false;
 uniform float u_flowSpeed = 1.0;
 uniform float u_flowDistortion = 0.1;
 uniform float u_time = 0.0;
-uniform float u_previewScale = 1.0;
-uniform vec2 u_previewOffset = vec2(0.0, 0.0);
 uniform bool u_previewRepeat = false;
 uniform float u_mainViewScale = 1.0;
 uniform vec2 u_mainViewOffset = vec2(0.0, 0.0);
-uniform vec2 u_previewPos = vec2(0.8, 0.0);
-uniform vec2 u_previewSize = vec2(0.2, 0.2);
 uniform float u_useDirectX = 0;
 
 void main()
 {
     // 应用主视图的缩放和偏移
     vec2 mainTexCoords = TexCoords / u_mainViewScale - u_mainViewOffset;
-    
-    // 检查是否在flowmap预览区域内 - 使用传入的预览位置参数
-    bool isFlowmapPreview = TexCoords.x >= u_previewPos.x && 
-                           TexCoords.x <= u_previewPos.x + u_previewSize.x && 
-                           TexCoords.y >= u_previewPos.y && 
-                           TexCoords.y <= u_previewPos.y + u_previewSize.y;
     
     if (u_hasBaseMap) {
         // 处理主视图区域
@@ -139,23 +129,6 @@ void main()
                 // 超出范围，显示黑色背景
                 FragColor = vec4(0.1, 0.1, 0.1, 1.0);
             }
-        }
-    }
-
-    if (isFlowmapPreview) {
-        // 流向图预览区域
-        vec2 previewTexCoord = vec2(
-            (TexCoords.x - u_previewPos.x) / u_previewSize.x,
-            (TexCoords.y - u_previewPos.y) / u_previewSize.y
-        );
-
-        // 只应用偏移，不再应用额外的缩放
-        previewTexCoord = previewTexCoord - u_previewOffset;
-
-        if (previewTexCoord.x >= 0.0 && previewTexCoord.x <= 1.0 &&
-            previewTexCoord.y >= 0.0 && previewTexCoord.y <= 1.0) {
-            vec4 flowColor = texture(flowMap, previewTexCoord);
-            FragColor = mix(FragColor, vec4(flowColor.rg, 0.0, 1.0), 0.85); // 只显示RG通道
         }
     }
 }

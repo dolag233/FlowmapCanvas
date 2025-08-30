@@ -41,9 +41,11 @@ def get_resource_path(relative_path):
 if __name__ == "__main__":
     # 测试资源定位
     shader_path = get_resource_path("flow_shader.glsl")
+    preview_shader_path = get_resource_path("preview_shader.glsl")
     print(f"Shader路径: {shader_path}")
     print(f"文件存在: {os.path.exists(shader_path)}")
-    
+    print(f"Preview Shader路径: {preview_shader_path}")
+    print(f"文件存在: {os.path.exists(preview_shader_path)}")
     # 打印环境信息
     print(f"是否为打包环境: {is_bundled()}")
     print(f"基础路径: {get_base_path()}") 

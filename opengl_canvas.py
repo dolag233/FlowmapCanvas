@@ -52,6 +52,8 @@ void main()
 }
 """
 
+PREVIEW_FRAGMENT_SHADER_SOURCE = None
+
 # --- Helper Function for Shader Compilation ---
 def create_shader_program(vertex_source, fragment_source):
     """编译顶点和片段着色器，并链接成一个程序"""
@@ -160,6 +162,7 @@ class FlowmapCanvas(QOpenGLWidget):
         self.has_base_map = False
 
         self.shader_program_id = 0 # 使用 shader program ID
+        self.preview_shader_program_id = 0 # 预览 shader program ID
         self.vao = 0 # 使用 0 表示无效 ID
         self.vbo = 0 # 使用 0 表示无效 ID
 
@@ -248,6 +251,8 @@ class FlowmapCanvas(QOpenGLWidget):
             glClearColor(0.1, 0.1, 0.1, 1.0)
             glEnable(GL_BLEND)
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+            # 启用模板缓冲支持
+            glClearStencil(0)
         
             # 初始化顶点缓冲对象
             self.init_quad_buffers()
@@ -344,91 +349,117 @@ class FlowmapCanvas(QOpenGLWidget):
         if self.shader_program_id == 0:
             QMessageBox.critical(self, "Shader Error", "Failed to compile or link shaders. Check console output.")
             # Consider disabling rendering or exiting
+        # 创建预览 shader（从外部文件加载）
+        try:
+            with open("preview_shader.glsl", encoding="utf-8") as f:
+                preview_frag_source = f.read()
+        except Exception as e:
+            print(f"Failed to read preview_shader.glsl: {e}")
+            preview_frag_source = None
+
+        if preview_frag_source:
+            self.preview_shader_program_id = create_shader_program(VERTEX_SHADER_SOURCE, preview_frag_source)
+        else:
+            self.preview_shader_program_id = 0
+        if self.preview_shader_program_id == 0:
+            QMessageBox.critical(self, "Shader Error", "Failed to compile preview shader.")
 
     def paintGL(self):
         """绘制OpenGL内容"""
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # 检查 shader program ID 和 VAO 是否有效
-        if self.shader_program_id == 0 or self.vao == 0:
+        if self.shader_program_id == 0 or self.preview_shader_program_id == 0 or self.vao == 0:
             return
-            
-        # 使用 shader program
+        # First pass: draw main shader full-screen
         try:
-            glUseProgram(self.shader_program_id)
-        except GLError as e:
-            print(f"Error using shader program ({self.shader_program_id}): {e}")
-            self.shader_program_id = 0 # Mark as invalid
-            return
+            glViewport(0, 0, self.width(), self.height())
 
-        glViewport(0, 0, self.width(), self.height())
-        
-        # --- 获取 Uniform 位置 (最好在 init_shaders 后缓存) ---
-        try:
+            glUseProgram(self.shader_program_id)
+
+            # --- 获取 Uniform 位置并设置 ---
             baseMapLoc = glGetUniformLocation(self.shader_program_id, "baseMap")
             hasBaseMapLoc = glGetUniformLocation(self.shader_program_id, "u_hasBaseMap")
             flowMapLoc = glGetUniformLocation(self.shader_program_id, "flowMap")
             timeLoc = glGetUniformLocation(self.shader_program_id, "u_time")
             speedLoc = glGetUniformLocation(self.shader_program_id, "u_flowSpeed")
             distLoc = glGetUniformLocation(self.shader_program_id, "u_flowDistortion")
-            previewScaleLoc = glGetUniformLocation(self.shader_program_id, "u_previewScale")
-            previewOffsetLoc = glGetUniformLocation(self.shader_program_id, "u_previewOffset")
             previewRepeatLoc = glGetUniformLocation(self.shader_program_id, "u_previewRepeat")
             mainViewScaleLoc = glGetUniformLocation(self.shader_program_id, "u_mainViewScale")
             mainViewOffsetLoc = glGetUniformLocation(self.shader_program_id, "u_mainViewOffset")
-            previewPosLoc = glGetUniformLocation(self.shader_program_id, "u_previewPos")
-            previewSizeLoc = glGetUniformLocation(self.shader_program_id, "u_previewSize")
             useDirectX = glGetUniformLocation(self.shader_program_id, "u_useDirectX")
-        except GLError as e:
-            print(f"Error getting uniform location: {e}. Shader ID: {self.shader_program_id}")
-            glUseProgram(0) # Release program
-            return
 
-        # --- 绑定纹理和设置 Uniforms ---
-        try:
             glActiveTexture(GL_TEXTURE0)
-            base_tex_to_bind = self.base_texture_id if self.base_texture_id != 0 else 0 # Use 0 if invalid
+            base_tex_to_bind = self.base_texture_id if self.base_texture_id != 0 else 0
             glBindTexture(GL_TEXTURE_2D, base_tex_to_bind)
-            if baseMapLoc != -1: glUniform1i(baseMapLoc, 0) # Texture unit 0
-            
+            if baseMapLoc != -1:
+                glUniform1i(baseMapLoc, 0)
             has_valid_base = self.has_base_map and self.base_texture_id != 0
-            if hasBaseMapLoc != -1: glUniform1i(hasBaseMapLoc, 1 if has_valid_base else 0) # Bool to int
-        
-            glActiveTexture(GL_TEXTURE1)
-            flow_tex_to_bind = self.flowmap_texture_id if self.flowmap_texture_id != 0 else 0 # Use 0 if invalid
-            glBindTexture(GL_TEXTURE_2D, flow_tex_to_bind)
-            if flowMapLoc != -1: glUniform1i(flowMapLoc, 1) # Texture unit 1
+            if hasBaseMapLoc != -1:
+                glUniform1i(hasBaseMapLoc, 1 if has_valid_base else 0)
 
-            # Set animation uniforms if locations are valid
+            glActiveTexture(GL_TEXTURE1)
+            flow_tex_to_bind = self.flowmap_texture_id if self.flowmap_texture_id != 0 else 0
+            glBindTexture(GL_TEXTURE_2D, flow_tex_to_bind)
+            if flowMapLoc != -1:
+                glUniform1i(flowMapLoc, 1)
+
             if timeLoc != -1: glUniform1f(timeLoc, self.anim_time)
             if speedLoc != -1: glUniform1f(speedLoc, self.flow_speed)
             if distLoc != -1: glUniform1f(distLoc, self.flow_distortion)
-            if previewScaleLoc != -1: glUniform1f(previewScaleLoc, 1.0)  # 设置为固定值 1.0，不再使用 self.preview_scale
-            if previewOffsetLoc != -1: glUniform2f(previewOffsetLoc, self.preview_offset.x(), self.preview_offset.y())
             if previewRepeatLoc != -1: glUniform1i(previewRepeatLoc, 1 if self.preview_repeat else 0)
             if mainViewScaleLoc != -1: glUniform1f(mainViewScaleLoc, self.main_view_scale)
             if mainViewOffsetLoc != -1: glUniform2f(mainViewOffsetLoc, self.main_view_offset.x(), self.main_view_offset.y())
-            # 更新预览窗口位置和大小 - 动态传递更新后的位置信息
-            if previewPosLoc != -1: glUniform2f(previewPosLoc, self.preview_pos.x(), self.preview_pos.y())
-            if previewSizeLoc != -1: glUniform2f(previewSizeLoc, self.preview_size.width(), self.preview_size.height())
-            if useDirectX != -1: glUniform1f(useDirectX, self.graphics_api_mode == "directx")
-        except GLError as e:
-            print(f"Error setting uniforms or binding textures: {e}")
-            glUseProgram(0) # Release program
-            return
+            if useDirectX != -1: glUniform1f(useDirectX, 1.0 if self.graphics_api_mode == "directx" else 0.0)
 
-        # --- 绘制 ---
-        try:
             glBindVertexArray(self.vao)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+            glBindVertexArray(0)
         except GLError as e:
-            print(f"Error drawing arrays: {e}")
+            print(f"Error drawing main pass: {e}")
         finally:
-            glBindVertexArray(0) # Ensure VAO is unbound
             glActiveTexture(GL_TEXTURE1)
             glBindTexture(GL_TEXTURE_2D, 0)
             glActiveTexture(GL_TEXTURE0)
             glBindTexture(GL_TEXTURE_2D, 0)
-            glUseProgram(0) # 释放 shader program
+            glUseProgram(0)
+
+        # Second pass: draw preview overlay (top-right) with alpha blending
+        # 计算预览区域像素矩形（右上角），保持底图纵横比
+        pv_w = int(self.preview_size.width() * self.width())
+        pv_h = int(self.preview_size.height() * self.height())
+        pv_x = int(self.preview_pos.x() * self.width())
+        # preview_pos 的 y 以顶部为基准，需要转换为自底向上的像素坐标
+        pv_y = int((1.0 - self.preview_pos.y() - self.preview_size.height()) * self.height())
+
+        try:
+            glEnable(GL_BLEND)
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+            glViewport(pv_x, pv_y, pv_w, pv_h)
+            glUseProgram(self.preview_shader_program_id)
+
+            # Bind flowmap to unit 0 for preview
+            glActiveTexture(GL_TEXTURE0)
+            glBindTexture(GL_TEXTURE_2D, self.flowmap_texture_id if self.flowmap_texture_id != 0 else 0)
+            loc_flow = glGetUniformLocation(self.preview_shader_program_id, "flowMap")
+            if loc_flow != -1:
+                glUniform1i(loc_flow, 0)
+            loc_off = glGetUniformLocation(self.preview_shader_program_id, "u_previewOffset")
+            if loc_off != -1:
+                glUniform2f(loc_off, self.preview_offset.x(), self.preview_offset.y())
+            loc_rep = glGetUniformLocation(self.preview_shader_program_id, "u_previewRepeat")
+            if loc_rep != -1:
+                glUniform1i(loc_rep, 1 if self.preview_repeat else 0)
+
+            glBindVertexArray(self.vao)
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+            glBindVertexArray(0)
+        except Exception as e:
+            print(f"Error drawing preview overlay: {e}")
+        finally:
+            glUseProgram(0)
+            glBindTexture(GL_TEXTURE_2D, 0)
+            glDisable(GL_BLEND)
 
     def resizeGL(self, w, h):
         """处理窗口大小变化事件，确保严格等比例缩放"""
@@ -2025,14 +2056,14 @@ class FlowmapCanvas(QOpenGLWidget):
         # 添加适当的边距
         margin = 0.01  # 窗口边距
         
-        # 放置预览窗口在右下角
+        # 放置预览窗口在右上角
         right_margin = 1.0 - preview_width - margin
-        bottom_margin = 1.0 - preview_height - margin
+        top_margin = margin
         
-        # 设置预览窗口位置
-        self.preview_pos = QPointF(right_margin, bottom_margin)
+        # 设置预览窗口位置（以左上为原点的归一化坐标）
+        self.preview_pos = QPointF(right_margin, top_margin)
         
-        print(f"预览窗口更新：宽度={preview_width:.3f}，高度={preview_height:.3f}，宽高比={preview_width/preview_height:.3f}，纹理比例={texture_aspect_ratio:.3f}")
+        print(f"预览窗口更新(右上)：宽度={preview_width:.3f}，高度={preview_height:.3f}，宽高比={preview_width/preview_height:.3f}，纹理比例={texture_aspect_ratio:.3f}")
         
         # 强制更新
         self.update()

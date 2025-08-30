@@ -69,6 +69,7 @@ class MainWindow(QMainWindow):
         fmt.setVersion(3, 2)
         fmt.setProfile(QSurfaceFormat.CompatibilityProfile)
         fmt.setSamples(4)
+        fmt.setStencilBufferSize(8)
         QSurfaceFormat.setDefaultFormat(fmt)
         
         self.canvas_widget = FlowmapCanvas()
