@@ -95,6 +95,8 @@ class FlowmapCanvas(QOpenGLWidget):
     opengl_initialized = pyqtSignal()  # 新增信号，当OpenGL初始化完成时发出
     base_image_loaded = pyqtSignal(int, int)  # 新增信号，当底图加载完成时发出，参数为宽度和高度
     brush_properties_changed = pyqtSignal(float, float)  # 新增信号，当笔刷属性(半径、强度)变化时发出
+    hover_entered = pyqtSignal()
+    hover_left = pyqtSignal()
 
     def __init__(self, parent=None, size=(1024, 1024)):
         super().__init__(parent)
@@ -714,6 +716,45 @@ class FlowmapCanvas(QOpenGLWidget):
             self.alt_press_position = None  # 清除Alt键按下时的位置
         else:
             super().keyReleaseEvent(event)
+
+    def leaveEvent(self, event):
+        """当鼠标离开画布时，强制退出Alt调整模式，防止状态卡住"""
+        try:
+            self.alt_pressed = False
+            self.alt_press_position = None
+            # 离开时若正在绘制，结束绘制，防止漂移
+            if self.mouse_state == MouseState.DRAWING or self.mouse_state == MouseState.ERASING:
+                self.mouse_state = MouseState.IDLE
+                self.is_drawing = False
+                self.is_erasing = False
+                try:
+                    self.drawingFinished.emit()
+                except Exception:
+                    pass
+            # 发出离开信号用于隐藏笔刷UI
+            try:
+                self.hover_left.emit()
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return super().leaveEvent(event)
+
+    def focusOutEvent(self, event):
+        """当画布失去焦点时，强制退出Alt调整模式，防止状态卡住"""
+        try:
+            self.alt_pressed = False
+            self.alt_press_position = None
+        except Exception:
+            pass
+        return super().focusOutEvent(event)
+
+    def enterEvent(self, event):
+        try:
+            self.hover_entered.emit()
+        except Exception:
+            pass
+        return super().enterEvent(event)
 
     def mousePressEvent(self, event: QMouseEvent):
         # 检查鼠标是否在预览区域

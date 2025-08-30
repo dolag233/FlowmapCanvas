@@ -1,5 +1,6 @@
 from PyQt5.QtWidgets import QOpenGLWidget
-from PyQt5.QtCore import Qt, QPoint, QTimer
+from PyQt5.QtCore import Qt, QPoint, QTimer, QPointF, pyqtSignal as Signal
+from PyQt5.QtGui import QCursor
 from PyQt5.QtGui import QSurfaceFormat
 from OpenGL.GL import *
 from OpenGL.GL import shaders
@@ -8,6 +9,7 @@ import numpy as np
 import ctypes
 
 from mesh_loader import MeshData
+from brush_cursor import BrushCursorWidget
 
 
 SIMPLE_VERT = """
@@ -77,8 +79,12 @@ void main(){
 
 
 class ThreeDViewport(QOpenGLWidget):
+    # 3D绘制开始/结束信号，用于复用2D撤销栈逻辑
+    paint_started = Signal()
+    paint_finished = Signal()
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.setFocusPolicy(Qt.StrongFocus)
         self.program = 0
         self.vao = 0
         self.vbo = 0
@@ -90,6 +96,21 @@ class ThreeDViewport(QOpenGLWidget):
         self._repaint_timer = QTimer(self)
         self._repaint_timer.setInterval(16)
         self._repaint_timer.timeout.connect(self.update)
+        # painting state
+        self._is_painting = False
+        self._last_hit_uv = None
+        self._alt_pressed = False
+        self._is_adjusting = False
+        self._adjust_origin = QPoint(0, 0)
+        self._initial_brush_radius = 40.0
+        self._initial_brush_strength = 0.5
+        # optional brush cursor overlay
+        self._brush_cursor = BrushCursorWidget(self)
+        try:
+            self._brush_cursor.resize(self.size())
+        except Exception:
+            pass
+        self._brush_cursor.hide()
 
         # default attribute indices
         self._attr_pos = 0
@@ -136,6 +157,11 @@ class ThreeDViewport(QOpenGLWidget):
     def set_canvas(self, canvas_widget):
         """Provide a reference to the 2D canvas so we can sample its textures and params."""
         self._canvas = canvas_widget
+        try:
+            # 同步笔刷半径
+            self._brush_cursor.radius = getattr(self._canvas, 'brush_radius', 40)
+        except Exception:
+            pass
 
     def get_uv_wire_data(self):
         """Return current model UVs and triangle indices for 2D UV wire rendering."""
@@ -198,6 +224,9 @@ class ThreeDViewport(QOpenGLWidget):
         view = self._compute_view_matrix()
         proj = self._compute_perspective_matrix(45.0, max(1.0, float(self.width()))/max(1.0, float(self.height())), 0.01, 100.0)
         viewproj = proj @ view
+        # 缓存用于光线投射，防止高宽变化带来不一致
+        self._last_view = view
+        self._last_proj = proj
 
         loc_viewproj = glGetUniformLocation(self.program, "u_viewProj")
         glUniformMatrix4fv(loc_viewproj, 1, GL_TRUE, viewproj.astype(np.float32))
@@ -345,6 +374,10 @@ class ThreeDViewport(QOpenGLWidget):
         self._uvs = mesh.uvs.astype(np.float32, copy=False)
         self._normals = mesh.normals.astype(np.float32, copy=False)
         self._indices = mesh.indices.astype(np.uint32, copy=False)
+        try:
+            self._tri_indices = self._indices.reshape(-1, 3)
+        except Exception:
+            self._tri_indices = np.zeros((0,3), dtype=np.uint32)
         # fit
         self._fit_model_matrix()
         # upload
@@ -397,17 +430,63 @@ class ThreeDViewport(QOpenGLWidget):
     def mousePressEvent(self, event):
         self._last_mouse = event.pos()
         if event.button() == Qt.LeftButton:
-            self._is_rotating = True
+            if (event.modifiers() & Qt.ControlModifier) or not self.model_loaded:
+                # Ctrl+左键：旋转
+                self._is_rotating = True
+                self._is_painting = False
+                self._hide_brush_cursor()
+            else:
+                # 左键绘制
+                uv = self._raycast_uv(event.pos())
+                if uv is not None:
+                    self._is_painting = True
+                    self._last_hit_uv = uv
+                    self.paint_started.emit()
+                    self._invoke_canvas_brush(self._last_hit_uv, uv)
+                    self._show_brush_cursor(event.pos())
         elif event.button() == Qt.MiddleButton:
-            self._is_panning = True
+            if event.modifiers() & Qt.ControlModifier:
+                # Ctrl+中键：旋转
+                self._is_rotating = True
+                self._is_panning = False
+                self._is_zooming = False
+            elif event.modifiers() & Qt.AltModifier:
+                # Alt+中键：调整笔刷（与2D一致）
+                self._is_adjusting = True
+                self._adjust_origin = event.pos()
+                try:
+                    self._initial_brush_radius = float(getattr(self._canvas, 'brush_radius', 40.0))
+                    self._initial_brush_strength = float(getattr(self._canvas, 'brush_strength', 0.5))
+                except Exception:
+                    self._initial_brush_radius = 40.0
+                    self._initial_brush_strength = 0.5
+                try:
+                    self._brush_cursor.set_adjusting_state(True)
+                except Exception:
+                    pass
+                self._show_brush_cursor(event.pos())
+            else:
+                self._is_panning = True
         elif event.button() == Qt.RightButton:
             self._is_zooming = True
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
+            if self._is_painting:
+                self._is_painting = False
+                self._last_hit_uv = None
+                self.paint_finished.emit()
+                self._hide_brush_cursor()
             self._is_rotating = False
         elif event.button() == Qt.MiddleButton:
             self._is_panning = False
+            self._is_rotating = False
+            if self._is_adjusting:
+                self._is_adjusting = False
+                try:
+                    self._brush_cursor.set_adjusting_state(False)
+                except Exception:
+                    pass
         elif event.button() == Qt.RightButton:
             self._is_zooming = False
 
@@ -415,6 +494,78 @@ class ThreeDViewport(QOpenGLWidget):
         dx = event.x() - self._last_mouse.x()
         dy = event.y() - self._last_mouse.y()
         self._last_mouse = event.pos()
+        # Alt 调整优先级最高（与2D一致，不需要按键鼠标，只要Alt按下并移动即可）
+        if self._alt_pressed and self._is_adjusting:
+            dx = event.x() - self._adjust_origin.x()
+            dy = event.y() - self._adjust_origin.y()
+            if abs(dx) > abs(dy):
+                scale_factor = 0.1
+                new_radius = self._initial_brush_radius + dx * scale_factor
+                new_radius = max(5.0, min(200.0, float(new_radius)))
+                try:
+                    if hasattr(self, '_canvas'):
+                        self._canvas.brush_radius = new_radius
+                        self._brush_cursor.set_radius(int(new_radius))
+                        self._canvas.brush_properties_changed.emit(new_radius, float(getattr(self._canvas, 'brush_strength', 0.5)))
+                except Exception:
+                    pass
+            else:
+                scale_factor = 0.005
+                new_strength = self._initial_brush_strength - dy * scale_factor
+                new_strength = max(0.01, min(1.0, float(new_strength)))
+                try:
+                    if hasattr(self, '_canvas'):
+                        self._canvas.brush_strength = new_strength
+                        self._canvas.brush_properties_changed.emit(float(getattr(self._canvas, 'brush_radius', 40.0)), new_strength)
+                except Exception:
+                    pass
+            # 光标显示在锚点位置
+            self._show_brush_cursor(self._adjust_origin)
+            self.update()
+            return
+        # Ctrl+左键优先：旋转，不绘制
+        if (event.buttons() & Qt.LeftButton) and (event.modifiers() & Qt.ControlModifier):
+            self._is_rotating = True
+            self._is_painting = False
+            self._hide_brush_cursor()
+        # Alt+中键：调整笔刷（与2D一致）
+        if self._is_adjusting and (event.buttons() & Qt.MiddleButton):
+            dx = event.x() - self._adjust_origin.x()
+            dy = event.y() - self._adjust_origin.y()
+            # 与2D一致：水平主导则调半径，垂直主导则调强度
+            if abs(dx) > abs(dy):
+                scale_factor = 0.1
+                new_radius = self._initial_brush_radius + dx * scale_factor
+                new_radius = max(5.0, min(200.0, float(new_radius)))
+                try:
+                    if hasattr(self, '_canvas'):
+                        self._canvas.brush_radius = new_radius
+                        # 更新3D光标半径
+                        self._brush_cursor.set_radius(int(new_radius))
+                        self._canvas.brush_properties_changed.emit(new_radius, float(getattr(self._canvas, 'brush_strength', 0.5)))
+                except Exception:
+                    pass
+            else:
+                scale_factor = 0.005
+                new_strength = self._initial_brush_strength - dy * scale_factor
+                new_strength = max(0.01, min(1.0, float(new_strength)))
+                try:
+                    if hasattr(self, '_canvas'):
+                        self._canvas.brush_strength = new_strength
+                        self._canvas.brush_properties_changed.emit(float(getattr(self._canvas, 'brush_radius', 40.0)), new_strength)
+                except Exception:
+                    pass
+            self._show_brush_cursor(event.pos())
+            self.update()
+            return
+        if self._is_painting and (event.buttons() & Qt.LeftButton):
+            uv = self._raycast_uv(event.pos())
+            if uv is not None and self._last_hit_uv is not None:
+                self._invoke_canvas_brush(self._last_hit_uv, uv)
+                self._last_hit_uv = uv
+                self._show_brush_cursor(event.pos())
+                self.update()
+            return
         if self._is_rotating:
             self._cam_yaw += dx * 0.005
             self._cam_pitch += -dy * 0.005
@@ -442,11 +593,226 @@ class ThreeDViewport(QOpenGLWidget):
                 zoom_factor = 0.1
             self._cam_distance = float(np.clip(self._cam_distance * zoom_factor, 0.2, 100.0))
             self.update()
+        else:
+            # 非绘制状态下也显示3D笔刷光标
+            self._show_brush_cursor(event.pos())
 
     def wheelEvent(self, event):
         delta = event.angleDelta().y() / 120.0
         scale = 1.0 - delta * 0.1
         self._cam_distance = float(np.clip(self._cam_distance * scale, 0.2, 100.0))
         self.update()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Alt:
+            self._alt_pressed = True
+            # 锚定调整起点（与2D一致）
+            pos = self.mapFromGlobal(QCursor.pos())
+            if not self.rect().contains(pos):
+                pos = QPoint(self.width() // 2, self.height() // 2)
+            self._adjust_origin = pos
+            try:
+                self._initial_brush_radius = float(getattr(self._canvas, 'brush_radius', 40.0))
+                self._initial_brush_strength = float(getattr(self._canvas, 'brush_strength', 0.5))
+            except Exception:
+                self._initial_brush_radius = 40.0
+                self._initial_brush_strength = 0.5
+            self._is_adjusting = True
+            try:
+                self._brush_cursor.set_adjusting_state(True)
+            except Exception:
+                pass
+            # 光标固定在锚点（与2D一致）
+            self._show_brush_cursor(self._adjust_origin)
+        super().keyPressEvent(event)
+
+    def keyReleaseEvent(self, event):
+        if event.key() == Qt.Key_Alt:
+            self._alt_pressed = False
+            self._is_adjusting = False
+            try:
+                self._brush_cursor.set_adjusting_state(False)
+            except Exception:
+                pass
+        super().keyReleaseEvent(event)
+
+    # ---------- Painting helpers ----------
+    def _show_brush_cursor(self, pos):
+        try:
+            self._brush_cursor.radius = getattr(self._canvas, 'brush_radius', 40)
+            self._brush_cursor.set_position(pos)
+            if not self._brush_cursor.isVisible():
+                self._brush_cursor.show()
+            self._brush_cursor.update()
+        except Exception:
+            pass
+
+    def _hide_brush_cursor(self):
+        try:
+            self._brush_cursor.hide()
+        except Exception:
+            pass
+
+    # public for external coordination
+    def hide_brush_cursor(self):
+        self._hide_brush_cursor()
+
+    def _invoke_canvas_brush(self, last_uv, curr_uv):
+        if not hasattr(self, '_canvas') or self._canvas is None:
+            return
+        try:
+            # 将UV(v向上)转换成 2D画布的 scene 坐标再转 widget 坐标
+            last_scene = QPointF(float(last_uv[0]), 1.0 - float(last_uv[1]))
+            curr_scene = QPointF(float(curr_uv[0]), 1.0 - float(curr_uv[1]))
+            last_widget = self._canvas.mapFromScene(last_scene)
+            curr_widget = self._canvas.mapFromScene(curr_scene)
+            self._canvas.apply_brush(last_widget, curr_widget)
+            self._canvas.update()
+        except Exception as e:
+            print(f"invoke_canvas_brush error: {e}")
+
+    # ---------- Ray casting ----------
+    def _raycast_uv(self, mouse_pos):
+        if not self.model_loaded or self._positions.size == 0 or self._indices.size == 0:
+            return None
+        # Ray in object space
+        ray_origin, ray_dir = self._compute_object_space_ray(mouse_pos.x(), mouse_pos.y())
+        if ray_origin is None:
+            return None
+        closest_t = float('inf')
+        hit_uv = None
+        tris = getattr(self, '_tri_indices', None)
+        if tris is None or tris.size == 0:
+            return None
+        P = self._positions
+        UV = self._uvs if self._uvs.size else None
+        if UV is None:
+            return None
+        for i0, i1, i2 in tris:
+            v0 = P[i0]; v1 = P[i1]; v2 = P[i2]
+            t, u, v = self._intersect_moller_trumbore(ray_origin, ray_dir, v0, v1, v2)
+            if t is not None and 1e-6 < t < closest_t:
+                closest_t = t
+                # barycentric to uv
+                w = 1.0 - u - v
+                uv0 = UV[i0]; uv1 = UV[i1]; uv2 = UV[i2]
+                hit_uv = uv0 * w + uv1 * u + uv2 * v
+        if hit_uv is None:
+            return None
+        # 无缝处理：在[0,1]范围内取模
+        u = float(hit_uv[0]) % 1.0
+        v = float(hit_uv[1]) % 1.0
+        return (u, v)
+
+    def _compute_object_space_ray(self, mx, my):
+        try:
+            w = max(1, self.width()); h = max(1, self.height())
+            x = (2.0 * mx) / w - 1.0
+            y = 1.0 - (2.0 * my) / h
+            near = np.array([x, y, -1.0, 1.0], dtype=np.float32)
+            far  = np.array([x, y,  1.0, 1.0], dtype=np.float32)
+            # 使用渲染时缓存的矩阵，避免尺寸变化带来的不一致
+            view = getattr(self, '_last_view', self._compute_view_matrix())
+            proj = getattr(self, '_last_proj', self._compute_perspective_matrix(45.0, w/float(h), 0.01, 100.0))
+            mvp = proj @ view @ self._model_matrix
+            inv = np.linalg.inv(mvp)
+            near_obj = inv @ near; far_obj = inv @ far
+            if abs(near_obj[3]) > 1e-6:
+                near_obj = near_obj / near_obj[3]
+            if abs(far_obj[3]) > 1e-6:
+                far_obj = far_obj / far_obj[3]
+            origin = near_obj[:3]
+            direction = far_obj[:3] - origin
+            norm = np.linalg.norm(direction) + 1e-8
+            direction = direction / norm
+            return origin, direction
+        except Exception as e:
+            print(f"compute ray error: {e}")
+            return None, None
+
+    def _intersect_moller_trumbore(self, ray_o, ray_d, v0, v1, v2):
+        eps = 1e-8
+        e1 = v1 - v0
+        e2 = v2 - v0
+        pvec = np.cross(ray_d, e2)
+        det = np.dot(e1, pvec)
+        if -eps < det < eps:
+            return None, None, None
+        inv_det = 1.0 / det
+        tvec = ray_o - v0
+        u = np.dot(tvec, pvec) * inv_det
+        if u < 0.0 or u > 1.0:
+            return None, None, None
+        qvec = np.cross(tvec, e1)
+        v = np.dot(ray_d, qvec) * inv_det
+        if v < 0.0 or u + v > 1.0:
+            return None, None, None
+        t = np.dot(e2, qvec) * inv_det
+        if t <= eps:
+            return None, None, None
+        return t, u, v
+
+    # Coordinate cursor between 2D/3D: hide 2D brush when cursor enters 3D; restore on leave
+    def enterEvent(self, event):
+        try:
+            if hasattr(self, '_canvas') and hasattr(self._canvas, 'brush_cursor') and self._canvas.brush_cursor:
+                self._canvas.brush_cursor.hide()
+            # 在进入3D时显示3D笔刷光标于当前鼠标位置
+            try:
+                pos = self.mapFromGlobal(QCursor.pos())
+                if self.rect().contains(pos):
+                    self._show_brush_cursor(pos)
+            except Exception:
+                pass
+        except Exception:
+            pass
+        return super().enterEvent(event)
+
+    def leaveEvent(self, event):
+        try:
+            # 退出3D：隐藏3D笔刷，恢复2D光标
+            self._hide_brush_cursor()
+            if hasattr(self, '_canvas') and hasattr(self._canvas, 'brush_cursor') and self._canvas.brush_cursor:
+                self._canvas.brush_cursor.show()
+            # 防止卡住：离开时强制退出调整/旋转/绘制状态
+            self._is_adjusting = False
+            self._alt_pressed = False
+            self._is_rotating = False
+            if self._is_painting:
+                self._is_painting = False
+                self._last_hit_uv = None
+                try:
+                    self.paint_finished.emit()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        return super().leaveEvent(event)
+
+    def focusOutEvent(self, event):
+        try:
+            # 失去焦点同样清理调整/绘制状态，避免Alt卡死
+            self._is_adjusting = False
+            self._alt_pressed = False
+            self._is_rotating = False
+            if self._is_painting:
+                self._is_painting = False
+                self._last_hit_uv = None
+                try:
+                    self.paint_finished.emit()
+                except Exception:
+                    pass
+            self._hide_brush_cursor()
+        except Exception:
+            pass
+        return super().focusOutEvent(event)
+
+    def resizeEvent(self, event):
+        try:
+            if self._brush_cursor:
+                self._brush_cursor.resize(self.size())
+        except Exception:
+            pass
+        return super().resizeEvent(event)
 
 

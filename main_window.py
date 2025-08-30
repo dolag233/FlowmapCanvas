@@ -85,6 +85,12 @@ class MainWindow(QMainWindow):
         self.current_mouse_pos = QPointF(0, 0)
         self.canvas_widget.setMouseTracking(True)
         self.canvas_widget.mouseMoveNonDrawing.connect(self.update_brush_preview)
+        # 鼠标进入/离开2D画布时控制2D笔刷可见性
+        try:
+            self.canvas_widget.hover_entered.connect(lambda: self._set_2d_brush_visible(True))
+            self.canvas_widget.hover_left.connect(lambda: self._set_2d_brush_visible(False))
+        except Exception:
+            pass
 
         # 在开始绘制和结束绘制时处理撤销/重做
         self.canvas_widget.drawingStarted.connect(self.on_drawing_started)
@@ -131,6 +137,8 @@ class MainWindow(QMainWindow):
         # 3D 视口（延迟创建）
         self._three_d_dock = None
         self._three_d_widget = None
+        # 在3D绘制时抑制2D笔刷响应
+        self._suppress_2d_input = False
 
     def try_load_default_background(self):
         """尝试加载默认底图（仅在OpenGL初始化完成后执行）"""
@@ -275,6 +283,14 @@ class MainWindow(QMainWindow):
             if self._three_d_dock is None:
                 self._three_d_widget = ThreeDViewport(self)
                 self._three_d_widget.set_canvas(self.canvas_widget)
+                # 3D绘制桥接到2D撤销栈
+                try:
+                    self._three_d_widget.paint_started.connect(self.on_drawing_started)
+                    self._three_d_widget.paint_finished.connect(self.on_drawing_finished)
+                    self._three_d_widget.paint_started.connect(lambda: self._set_2d_input_suppressed(True))
+                    self._three_d_widget.paint_finished.connect(lambda: self._set_2d_input_suppressed(False))
+                except Exception:
+                    pass
                 dock = QDockWidget(translator.tr("menu_viewport"), self)
                 dock.setWidget(self._three_d_widget)
                 # 固定Dock：只允许关闭，不允许拖拽/浮动，且仅位于右侧
@@ -293,6 +309,11 @@ class MainWindow(QMainWindow):
             if uv_group:
                 uv_group.setVisible(True)
             self.canvas_widget.uv_wire_enabled = True
+            # 聚焦3D（不在此处全局隐藏2D笔刷，交给enter/leave事件控制）
+            try:
+                self._three_d_widget.setFocus()
+            except Exception:
+                pass
         else:
             if self._three_d_dock is not None:
                 self._three_d_dock.hide()
@@ -301,6 +322,15 @@ class MainWindow(QMainWindow):
             if uv_group:
                 uv_group.setVisible(False)
             self.canvas_widget.uv_wire_enabled = False
+            # 显示2D笔刷，隐藏3D笔刷
+            try:
+                if hasattr(self, 'brush_cursor') and self.brush_cursor:
+                    self.brush_cursor.show()
+                if self._three_d_widget:
+                    self._three_d_widget.hide_brush_cursor()
+                self._set_2d_input_suppressed(False)
+            except Exception:
+                pass
 
     def _set_initial_3d_dock_size(self):
         try:
@@ -1361,4 +1391,14 @@ class MainWindow(QMainWindow):
         
         # 应用样式
         self.apply_modern_style()
+
+    def _set_2d_brush_visible(self, visible: bool):
+        try:
+            if hasattr(self, 'brush_cursor') and self.brush_cursor:
+                self.brush_cursor.setVisible(bool(visible))
+        except Exception:
+            pass
+
+    def _set_2d_input_suppressed(self, suppressed: bool):
+        self._suppress_2d_input = bool(suppressed)
 
