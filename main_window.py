@@ -279,6 +279,8 @@ class MainWindow(QMainWindow):
 
     def toggle_3d_view(self, checked):
         from PyQt5.QtWidgets import QDockWidget
+        # 同步菜单动作选中状态
+        self._set_action_checked_no_signal(self.menu_builder.get_action("toggle_3d_view"), bool(checked))
         if checked:
             if self._three_d_dock is None:
                 self._three_d_widget = ThreeDViewport(self)
@@ -296,6 +298,10 @@ class MainWindow(QMainWindow):
                 # 固定Dock：只允许关闭，不允许拖拽/浮动，且仅位于右侧
                 dock.setAllowedAreas(Qt.RightDockWidgetArea)
                 dock.setFeatures(QDockWidget.DockWidgetClosable)
+                try:
+                    dock.visibilityChanged.connect(self._on_three_d_visibility_changed)
+                except Exception:
+                    pass
                 self.addDockWidget(Qt.RightDockWidgetArea, dock)
                 self._three_d_dock = dock
                 # 延迟一次，用布局稳定后的分配设置初始尺寸
@@ -371,6 +377,8 @@ class MainWindow(QMainWindow):
         else:
             if self._three_d_dock is not None:
                 self._three_d_dock.show()
+            # 同步菜单项勾选
+            self._set_action_checked_no_signal(self.menu_builder.get_action("toggle_3d_view"), True)
         try:
             mesh = load_obj(path)
             ok = mesh is not None and mesh.positions.size > 0 and mesh.indices.size > 0
@@ -1401,4 +1409,14 @@ class MainWindow(QMainWindow):
 
     def _set_2d_input_suppressed(self, suppressed: bool):
         self._suppress_2d_input = bool(suppressed)
+
+    def _set_action_checked_no_signal(self, action, checked: bool):
+        try:
+            if action is None:
+                return
+            action.blockSignals(True)
+            action.setChecked(bool(checked))
+            action.blockSignals(False)
+        except Exception:
+            pass
 

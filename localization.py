@@ -57,7 +57,7 @@ TRANSLATIONS = {
     "flow_distance": {"zh_CN": "流动距离", "en_US": "Flow Distance"},
     "overlay_settings": {"zh_CN": "参考贴图", "en_US": "Reference Overlay"},
     "overlay_opacity": {"zh_CN": "透明度", "en_US": "Opacity"},
-    "uv_overlay": {"zh_CN": "UV覆盖", "en_US": "UV Overlay"},
+    "uv_overlay": {"zh_CN": "模型UV", "en_US": "Mesh UV"},
     "uv_opacity": {"zh_CN": "不透明度", "en_US": "Opacity"},
     "uv_line_width": {"zh_CN": "线条宽度", "en_US": "Line Width"},
     
