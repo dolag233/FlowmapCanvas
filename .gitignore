@@ -7,3 +7,4 @@
 /*.spec
 app_settings.json
 .cursorignore
+.cursor/rules/cursorrules.mdc
