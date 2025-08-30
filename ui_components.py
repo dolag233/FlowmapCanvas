@@ -53,7 +53,12 @@ class MenuBuilder:
         import_flowmap_action = QAction(translator.tr("import_flowmap"), self.main_window)
         import_flowmap_action.triggered.connect(self.main_window.import_flowmap)
         menu.addAction(import_flowmap_action)
-        
+
+        # 导入参考贴图（Indicator/Guide Overlay） - 紧随导入Flowmap之后
+        import_overlay_action = QAction(translator.tr("import_guide_overlay"), self.main_window)
+        import_overlay_action.triggered.connect(self.main_window.import_overlay_image)
+        menu.addAction(import_overlay_action)
+
         # 导出Flowmap
         export_action = QAction(translator.tr("export_flowmap"), self.main_window)
         export_action.triggered.connect(self.main_window.export_flowmap)
@@ -61,6 +66,7 @@ class MenuBuilder:
         
         self.actions["import_background"] = import_action
         self.actions["import_flowmap"] = import_flowmap_action
+        self.actions["import_guide_overlay"] = import_overlay_action
         self.actions["export_flowmap"] = export_action
         
     def _build_edit_menu(self, menu):

@@ -163,6 +163,10 @@ class FlowmapCanvas(QOpenGLWidget):
 
         self.shader_program_id = 0 # 使用 shader program ID
         self.preview_shader_program_id = 0 # 预览 shader program ID
+        self.overlay_shader_program_id = 0 # 参考贴图 shader program ID
+        self.overlay_texture_id = 0
+        self.overlay_opacity = 0.5
+        self.has_overlay = False
         self.vao = 0 # 使用 0 表示无效 ID
         self.vbo = 0 # 使用 0 表示无效 ID
 
@@ -339,6 +343,39 @@ class FlowmapCanvas(QOpenGLWidget):
 
         glBindTexture(GL_TEXTURE_2D, 0)
 
+    def load_overlay_image(self, file_path):
+        """加载参考贴图到GPU纹理"""
+        try:
+            self.makeCurrent()
+            img = Image.open(file_path).convert('RGBA')
+            width, height = img.size
+            data = np.array(img, dtype=np.uint8)
+            data = np.flipud(data)
+
+            if self.overlay_texture_id == 0:
+                self.overlay_texture_id = glGenTextures(1)
+            glBindTexture(GL_TEXTURE_2D, self.overlay_texture_id)
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
+            glBindTexture(GL_TEXTURE_2D, 0)
+
+            self.has_overlay = True
+            self.doneCurrent()
+            self.update()
+            return True
+        except Exception as e:
+            print(f"Failed to load overlay image: {e}")
+            try:
+                glBindTexture(GL_TEXTURE_2D, 0)
+            except:
+                pass
+            self.has_overlay = False
+            self.doneCurrent()
+            return False
+
     def init_shaders(self):
         # 使用辅助函数创建 shader program
         fragShader = ""
@@ -363,6 +400,19 @@ class FlowmapCanvas(QOpenGLWidget):
             self.preview_shader_program_id = 0
         if self.preview_shader_program_id == 0:
             QMessageBox.critical(self, "Shader Error", "Failed to compile preview shader.")
+        # 创建参考贴图 shader
+        try:
+            with open("overlay_shader.glsl", encoding="utf-8") as f:
+                overlay_frag_source = f.read()
+        except Exception as e:
+            print(f"Failed to read overlay_shader.glsl: {e}")
+            overlay_frag_source = None
+        if overlay_frag_source:
+            self.overlay_shader_program_id = create_shader_program(VERTEX_SHADER_SOURCE, overlay_frag_source)
+        else:
+            self.overlay_shader_program_id = 0
+        if self.overlay_shader_program_id == 0:
+            QMessageBox.critical(self, "Shader Error", "Failed to compile overlay shader.")
 
     def paintGL(self):
         """绘制OpenGL内容"""
@@ -460,6 +510,43 @@ class FlowmapCanvas(QOpenGLWidget):
             glUseProgram(0)
             glBindTexture(GL_TEXTURE_2D, 0)
             glDisable(GL_BLEND)
+
+        # Third pass: draw overlay image (if any) over MAIN VIEW (full-screen), not the small preview
+        if self.has_overlay and self.overlay_texture_id != 0 and self.overlay_shader_program_id != 0:
+            try:
+                glEnable(GL_BLEND)
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+
+                glViewport(0, 0, self.width(), self.height())
+                glUseProgram(self.overlay_shader_program_id)
+
+                glActiveTexture(GL_TEXTURE0)
+                glBindTexture(GL_TEXTURE_2D, self.overlay_texture_id)
+                loc_tex = glGetUniformLocation(self.overlay_shader_program_id, "overlayMap")
+                if loc_tex != -1:
+                    glUniform1i(loc_tex, 0)
+                loc_op = glGetUniformLocation(self.overlay_shader_program_id, "u_opacity")
+                if loc_op != -1:
+                    glUniform1f(loc_op, float(self.overlay_opacity))
+                loc_ms = glGetUniformLocation(self.overlay_shader_program_id, "u_mainViewScale")
+                if loc_ms != -1:
+                    glUniform1f(loc_ms, self.main_view_scale)
+                loc_mo = glGetUniformLocation(self.overlay_shader_program_id, "u_mainViewOffset")
+                if loc_mo != -1:
+                    glUniform2f(loc_mo, self.main_view_offset.x(), self.main_view_offset.y())
+                loc_rep = glGetUniformLocation(self.overlay_shader_program_id, "u_repeat")
+                if loc_rep != -1:
+                    glUniform1i(loc_rep, 1 if self.preview_repeat else 0)
+
+                glBindVertexArray(self.vao)
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
+                glBindVertexArray(0)
+            except Exception as e:
+                print(f"Error drawing reference overlay: {e}")
+            finally:
+                glUseProgram(0)
+                glBindTexture(GL_TEXTURE_2D, 0)
+                glDisable(GL_BLEND)
 
     def resizeGL(self, w, h):
         """处理窗口大小变化事件，确保严格等比例缩放"""

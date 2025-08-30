@@ -239,6 +239,26 @@ class MainWindow(QMainWindow):
         self.canvas_widget.fill_flowmap(r_value, g_value)
         self.status_bar.showMessage(translator.tr("canvas_filled", r=r_value, g=g_value), 3000)
 
+    def import_overlay_image(self):
+        """导入参考贴图(Reference Overlay)并上传为GL纹理"""
+        image_filter = translator.tr("image_files")
+        path, _ = QFileDialog.getOpenFileName(self, translator.tr("import_guide_overlay"), '', image_filter)
+        if not path:
+            return
+        success = self.canvas_widget.load_overlay_image(path)
+        if success:
+            self.status_bar.showMessage(translator.tr("background_loaded", path=path), 3000)
+            # 显示参考贴图分组
+            overlay_group = self.panel_manager.get_control("overlay_group")
+            if overlay_group:
+                overlay_group.setVisible(True)
+        else:
+            self.status_bar.showMessage(translator.tr("import_failed"), 3000)
+
+    def set_overlay_opacity(self, opacity: float):
+        self.canvas_widget.overlay_opacity = float(opacity)
+        self.canvas_widget.update()
+
     def _set_slider_value_no_signal(self, slider, value):
         """安全设置slider的值，不触发信号"""
         if slider is None:
@@ -367,6 +387,18 @@ class MainWindow(QMainWindow):
                 app_settings.save_settings(),
                 self._set_checkbox_checked_no_signal(pm.get_control("invert_g_checkbox"), bool(v)),
                 self.panel_manager._update_orientation_label()
+            )
+        )
+
+        # overlay_opacity (0~1)
+        self.param_registry.register(
+            "overlay_opacity",
+            read_fn=lambda: float(self.canvas_widget.overlay_opacity),
+            apply_fn=lambda v, transient=False: (
+                setattr(self.canvas_widget, "overlay_opacity", float(v)),
+                self._set_slider_value_no_signal(pm.get_control("overlay_opacity_slider"), int(round(float(v) * 100))),
+                pm.get_control("overlay_opacity_label").setText(f"{translator.tr('overlay_opacity')}: {float(v):.2f}") if pm.get_control("overlay_opacity_label") else None,
+                self.canvas_widget.update()
             )
         )
 

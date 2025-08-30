@@ -39,6 +39,7 @@ class PanelManager:
         self._create_mode_group(layout)
         self._create_flow_group(layout)
         self._create_channel_orientation_group(layout)
+        self._create_overlay_group(layout)
         self._create_fill_controls(layout)
         layout.addStretch()  # 添加伸缩空间，使其他组件靠上
         self._create_shortcut_group(layout)
@@ -248,6 +249,46 @@ class PanelManager:
         
         parent_layout.addWidget(channel_group)
 
+    def _create_overlay_group(self, parent_layout):
+        """创建参考贴图设置组"""
+        overlay_group = QGroupBox(translator.tr("overlay_settings"))
+        layout = QVBoxLayout()
+        layout.setSpacing(8)
+
+        font = QFont()
+        font_size = font.pointSize()
+        font.setPointSize(int(font_size * 1.2))
+
+        opacity_label = QLabel(f"{translator.tr('overlay_opacity')}: 0.5")
+        opacity_label.setFont(font)
+
+        opacity_slider = QSlider(Qt.Horizontal)
+        opacity_slider.setMinimum(0)
+        opacity_slider.setMaximum(100)
+        opacity_slider.setValue(50)
+
+        def on_opacity_changed(value):
+            opacity = value / 100.0
+            opacity_label.setText(f"{translator.tr('overlay_opacity')}: {opacity:.2f}")
+            # 预览实时更新，但不入栈
+            self.main_window.param_registry.apply("overlay_opacity", opacity, transient=True)
+
+        opacity_slider.sliderPressed.connect(lambda: self._record_overlay_old_opacity())
+        opacity_slider.valueChanged.connect(on_opacity_changed)
+        opacity_slider.sliderReleased.connect(lambda: self._commit_overlay_opacity(opacity_slider.value()))
+
+        layout.addWidget(opacity_label)
+        layout.addWidget(opacity_slider)
+        overlay_group.setLayout(layout)
+
+        self.controls["overlay_opacity_label"] = opacity_label
+        self.controls["overlay_opacity_slider"] = opacity_slider
+        self.controls["overlay_group"] = overlay_group
+
+        parent_layout.addWidget(overlay_group)
+        # 默认在未导入参考贴图之前隐藏整个组
+        overlay_group.setVisible(False)
+
     def _on_invert_param_changed(self, key, checked):
         # 使用注册表写入并入栈
         try:
@@ -341,6 +382,20 @@ class PanelManager:
     def get_control(self, name):
         """获取指定名称的控件"""
         return self.controls.get(name)
+    
+    def _record_overlay_old_opacity(self):
+        try:
+            self.main_window._old_param_values["overlay_opacity"] = self.main_window.param_registry.read("overlay_opacity")
+        except Exception:
+            self.main_window._old_param_values["overlay_opacity"] = float(self.main_window.canvas_widget.overlay_opacity)
+    
+    def _commit_overlay_opacity(self, slider_value):
+        new_value = slider_value / 100.0
+        old_value = self.main_window._old_param_values.get("overlay_opacity", new_value)
+        if abs(old_value - new_value) > 1e-6 and self.main_window.param_registry.has_key("overlay_opacity"):
+            from commands import ParameterChangeCommand
+            cmd = ParameterChangeCommand(self.main_window.param_registry, "overlay_opacity", old_value, new_value)
+            self.main_window.command_mgr.execute_command(cmd)
         
     def update_brush_size_label(self, value):
         """更新笔刷大小标签"""

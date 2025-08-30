@@ -24,6 +24,7 @@ TRANSLATIONS = {
     "import_background": {"zh_CN": "导入底图", "en_US": "Import Background"},
     "import_flowmap": {"zh_CN": "导入Flowmap", "en_US": "Import Flowmap"},
     "export_flowmap": {"zh_CN": "导出Flowmap", "en_US": "Export Flowmap"},
+    "import_guide_overlay": {"zh_CN": "导入参考贴图", "en_US": "Import Reference Overlay"},
     
     # 编辑菜单项
     "undo": {"zh_CN": "撤销", "en_US": "Undo"},
@@ -51,6 +52,8 @@ TRANSLATIONS = {
     "flow_effect_control": {"zh_CN": "流动效果控制", "en_US": "Flow Effect Control"},
     "flow_speed": {"zh_CN": "流动速度", "en_US": "Flow Speed"},
     "flow_distance": {"zh_CN": "流动距离", "en_US": "Flow Distance"},
+    "overlay_settings": {"zh_CN": "参考贴图", "en_US": "Reference Overlay"},
+    "overlay_opacity": {"zh_CN": "不透明度", "en_US": "Opacity"},
     
     # 按钮
     "fill_canvas": {"zh_CN": "填充画布", "en_US": "Fill Canvas"},
