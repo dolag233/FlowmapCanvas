@@ -11,6 +11,7 @@ from PyQt5.QtGui import QPixmap, QSurfaceFormat, QPen, QBrush, QColor, QPainter,
 from opengl_canvas import FlowmapCanvas
 from command_manager import CommandManager
 from commands import BrushStrokeCommand, ParameterChangeCommand
+from parameter_registry import ParameterRegistry
 from localization import translator, Language
 from brush_cursor import BrushCursorWidget
 from app_settings import app_settings
@@ -24,6 +25,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.command_mgr = CommandManager()
         self.is_in_brush_adjustment = False  # 添加标记，用于判断是否正在调整笔刷属性
+        self.param_registry = ParameterRegistry()
+        self._old_param_values = {}
 
         # 创建UI更新钩子
         self.command_mgr.undo_stack_changed = lambda: self.update_command_stack_ui()
@@ -92,6 +95,9 @@ class MainWindow(QMainWindow):
         # 初始化各个UI组件
         self.init_menu_bar()
         self.init_param_panel()
+
+        # 注册参数（集中化 Model+UI 更新路径）
+        self._register_parameters()
 
         # 初始化绘制区域的笔刷预览指示器
         self.setup_canvas_brush_cursor()
@@ -232,59 +238,232 @@ class MainWindow(QMainWindow):
         self.canvas_widget.fill_flowmap(r_value, g_value)
         self.status_bar.showMessage(translator.tr("canvas_filled", r=r_value, g=g_value), 3000)
 
-    def on_brush_size_changed(self, value):
+    def _set_slider_value_no_signal(self, slider, value):
+        """安全设置slider的值，不触发信号"""
+        if slider is None:
+            return
+        if slider.value() == int(value):
+            return
+        slider.blockSignals(True)
+        slider.setValue(int(value))
+        slider.blockSignals(False)
+
+    def _set_checkbox_checked_no_signal(self, checkbox, checked):
+        if checkbox is None:
+            return
+        if bool(checkbox.isChecked()) == bool(checked):
+            return
+        checkbox.blockSignals(True)
+        checkbox.setChecked(bool(checked))
+        checkbox.blockSignals(False)
+
+    def _register_parameters(self):
+        """集中注册参数的读/写，保证 Model+UI+Brush 统一更新路径"""
+        pm = self.panel_manager
+        c = self.canvas_widget
+
+        # brush_radius
+        self.param_registry.register(
+            "brush_radius",
+            read_fn=lambda: int(c.brush_radius),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "brush_radius", int(v)),
+                self.update_canvas_brush_radius(int(v)),
+                pm.update_brush_size_label(int(v)),
+                self._set_slider_value_no_signal(pm.get_control("brush_size_slider"), int(v))
+            )
+        )
+
+        # brush_strength (0~1)
+        self.param_registry.register(
+            "brush_strength",
+            read_fn=lambda: float(c.brush_strength),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "brush_strength", float(v)),
+                pm.update_flow_strength_label(float(v)),
+                self._set_slider_value_no_signal(pm.get_control("flow_strength_slider"), int(round(float(v) * 100)))
+            )
+        )
+
+        # speed_sensitivity (0~1)
+        self.param_registry.register(
+            "speed_sensitivity",
+            read_fn=lambda: float(c.speed_sensitivity),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "speed_sensitivity", float(v)),
+                pm.update_speed_sensitivity_label(float(v)),
+                self._set_slider_value_no_signal(pm.get_control("speed_sensitivity_slider"), int(round(float(v) * 100)))
+            )
+        )
+
+        # flow_speed (0~2)
+        self.param_registry.register(
+            "flow_speed",
+            read_fn=lambda: float(c.flow_speed),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "flow_speed", float(v)),
+                pm.update_flow_speed_label(float(v)),
+                self._set_slider_value_no_signal(pm.get_control("flow_speed_slider"), int(round(float(v) * 100)))
+            )
+        )
+
+        # flow_distortion (0~1)
+        self.param_registry.register(
+            "flow_distortion",
+            read_fn=lambda: float(c.flow_distortion),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "flow_distortion", float(v)),
+                pm.update_flow_distortion_label(float(v)),
+                self._set_slider_value_no_signal(pm.get_control("flow_distortion_slider"), int(round(float(v) * 100)))
+            )
+        )
+
+        # seamless mode (bool)
+        self.param_registry.register(
+            "seamless_mode",
+            read_fn=lambda: bool(app_settings.seamless_mode),
+            apply_fn=lambda v, transient=False: (
+                self.canvas_widget.set_seamless_mode(bool(v)),
+                app_settings.set_seamless_mode(bool(v)),
+                app_settings.save_settings(),
+                self._set_checkbox_checked_no_signal(pm.get_control("seamless_checkbox"), bool(v)),
+                self.status_bar.showMessage(translator.tr("seamless_status", status=(translator.tr("enabled") if bool(v) else translator.tr("disabled"))), 2000)
+            )
+        )
+
+        # preview repeat (bool)
+        self.param_registry.register(
+            "preview_repeat",
+            read_fn=lambda: bool(app_settings.preview_repeat),
+            apply_fn=lambda v, transient=False: (
+                setattr(self.canvas_widget, "preview_repeat", bool(v)),
+                app_settings.set_preview_repeat(bool(v)),
+                app_settings.save_settings(),
+                self.canvas_widget.update(),
+                self._set_checkbox_checked_no_signal(pm.get_control("preview_repeat_checkbox"), bool(v)),
+                self.status_bar.showMessage(translator.tr("preview_mode", status=(translator.tr("enabled") if bool(v) else translator.tr("disabled"))), 2000)
+            )
+        )
+
+        # invert R channel (bool)
+        self.param_registry.register(
+            "invert_r_channel",
+            read_fn=lambda: bool(app_settings.invert_r_channel),
+            apply_fn=lambda v, transient=False: (
+                app_settings.set_invert_r_channel(bool(v)),
+                app_settings.save_settings(),
+                self._set_checkbox_checked_no_signal(pm.get_control("invert_r_checkbox"), bool(v)),
+                self.panel_manager._update_orientation_label()
+            )
+        )
+
+        # invert G channel (bool)
+        self.param_registry.register(
+            "invert_g_channel",
+            read_fn=lambda: bool(app_settings.invert_g_channel),
+            apply_fn=lambda v, transient=False: (
+                app_settings.set_invert_g_channel(bool(v)),
+                app_settings.save_settings(),
+                self._set_checkbox_checked_no_signal(pm.get_control("invert_g_checkbox"), bool(v)),
+                self.panel_manager._update_orientation_label()
+            )
+        )
+
+    def on_brush_size_pressed(self):
+        # 记录开始编辑时的旧值
+        try:
+            self._old_param_values["brush_radius"] = self.param_registry.read("brush_radius")
+        except Exception:
+            self._old_param_values["brush_radius"] = int(self.canvas_widget.brush_radius)
+
+    def on_brush_size_changed(self, value, need_record=False):
         """处理笔刷大小变化"""
-        old_value = self.canvas_widget.brush_radius
-        self.canvas_widget.brush_radius = value
-        
-        # 更新UI标签
-        self.panel_manager.update_brush_size_label(value)
-        self.status_bar.showMessage(translator.tr("brush_status", 
-                                               size=value, 
-                                               strength=self.canvas_widget.brush_strength))
+        # 实时应用，不入栈
+        self.param_registry.apply("brush_radius", int(value), transient=True)
+        if need_record and not self.is_in_brush_adjustment:
+            old_value = getattr(self, "_old_param_values", {}).get("brush_radius", None)
+            new_value = int(value)
+            if old_value is None:
+                old_value = new_value
+            if old_value != new_value and self.param_registry.has_key("brush_radius"):
+                cmd = ParameterChangeCommand(self.param_registry, "brush_radius", old_value, new_value)
+                self.command_mgr.execute_command(cmd)
 
-        # 更新画布上的笔刷光标
-        self.update_canvas_brush_radius(value)
+    def on_brush_size_released(self):
+        slider = self.panel_manager.get_control("brush_size_slider")
+        if slider:
+            value = slider.value()
+        else:
+            value = int(self.canvas_widget.brush_radius)
+        self.on_brush_size_changed(value, True)
 
-        # 仅当不是通过Alt键调整时才创建命令用于撤销/重做
-        if not self.is_in_brush_adjustment:
-            cmd = ParameterChangeCommand(self.canvas_widget, "brush_radius", old_value, value)
-            self.command_mgr.execute_command(cmd)
+    def on_flow_strength_pressed(self):
+        # 记录开始编辑时的旧值
+        try:
+            self._old_param_values["brush_strength"] = self.param_registry.read("brush_strength")
+        except Exception:
+            self._old_param_values["brush_strength"] = float(self.canvas_widget.brush_strength)
 
-    def on_flow_strength_changed(self, value):
+    def on_flow_strength_changed(self, value, need_record=False):
         """处理流动强度变化"""
-        strength = value / 100.0  # 转换为 0-1 范围
-        old_value = self.canvas_widget.brush_strength
-        self.canvas_widget.brush_strength = strength
-        
-        # 更新UI标签
-        self.panel_manager.update_flow_strength_label(strength)
-        self.status_bar.showMessage(translator.tr("brush_status", 
-                                               size=int(self.canvas_widget.brush_radius), 
-                                               strength=strength))
-        
-        # 仅当不是通过Alt键调整时才创建命令用于撤销/重做
-        if not self.is_in_brush_adjustment:
-            cmd = ParameterChangeCommand(self.canvas_widget, "brush_strength", old_value, strength)
+        strength = value / 100.0
+        # 实时应用，不入栈
+        self.param_registry.apply("brush_strength", float(strength), transient=True)
+        if need_record and not self.is_in_brush_adjustment:
+            old_value = getattr(self, "_old_param_values", {}).get("brush_strength", None)
+            new_value = float(strength)
+            if old_value is None:
+                old_value = new_value
+            if abs(old_value - new_value) > 1e-6 and self.param_registry.has_key("brush_strength"):
+                cmd = ParameterChangeCommand(self.param_registry, "brush_strength", old_value, new_value)
+                self.command_mgr.execute_command(cmd)
+
+    def on_flow_strength_released(self):
+        slider = self.panel_manager.get_control("flow_strength_slider")
+        if slider:
+            value = slider.value()
+        else:
+            value = int(self.canvas_widget.brush_strength * 100)
+        self.on_flow_strength_changed(value, True)
+
+    def _on_speed_sensitivity_released_internal(self, slider_value):
+        # 实时应用在 valueChanged 已做；此处决定是否入栈
+        sensitivity = slider_value / 100.0
+        old_value = getattr(self, "_old_param_values", {}).get("speed_sensitivity", None)
+        new_value = float(sensitivity)
+        if old_value is None:
+            old_value = new_value
+        if abs(old_value - new_value) > 1e-6 and self.param_registry.has_key("speed_sensitivity"):
+            cmd = ParameterChangeCommand(self.param_registry, "speed_sensitivity", old_value, new_value)
             self.command_mgr.execute_command(cmd)
 
-    def on_flow_speed_changed(self, value):
+    def on_flow_speed_changed(self, value, need_record=False):
         """处理流动速度变化"""
         speed = value / 100.0
-        self.canvas_widget.flow_speed = speed
-        
-        # 更新UI标签
-        self.panel_manager.update_flow_speed_label(speed)
-        self.status_bar.showMessage(translator.tr("flow_speed_changed", value=speed), 2000)
+        # 实时应用，不入栈
+        self.param_registry.apply("flow_speed", float(speed), transient=True)
+        if need_record:
+            old_value = getattr(self, "_old_param_values", {}).get("flow_speed", None)
+            new_value = float(speed)
+            if old_value is None:
+                old_value = new_value
+            if abs(old_value - new_value) > 1e-6 and self.param_registry.has_key("flow_speed"):
+                cmd = ParameterChangeCommand(self.param_registry, "flow_speed", old_value, new_value)
+                self.command_mgr.execute_command(cmd)
 
-    def on_flow_distortion_changed(self, value):
+    def on_flow_distortion_changed(self, value, need_record=False):
         """处理流动距离变化"""
         distortion = value / 100.0
-        self.canvas_widget.flow_distortion = distortion
-        
-        # 更新UI标签
-        self.panel_manager.update_flow_distortion_label(distortion)
-        self.status_bar.showMessage(translator.tr("flow_distance_changed", value=distortion), 2000)
+        # 实时应用，不入栈
+        self.param_registry.apply("flow_distortion", float(distortion), transient=True)
+        if need_record:
+            old_value = getattr(self, "_old_param_values", {}).get("flow_distortion", None)
+            new_value = float(distortion)
+            if old_value is None:
+                old_value = new_value
+            if abs(old_value - new_value) > 1e-6 and self.param_registry.has_key("flow_distortion"):
+                cmd = ParameterChangeCommand(self.param_registry, "flow_distortion", old_value, new_value)
+                self.command_mgr.execute_command(cmd)
 
     # 实现导入方法
     def import_background(self):

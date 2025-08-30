@@ -9,6 +9,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
 from localization import translator
+from functools import partial
 
 class PanelManager:
     """工具面板管理器 - 负责创建和管理工具面板"""
@@ -86,10 +87,18 @@ class PanelManager:
         speed_sensitivity_slider.setMaximum(100)
         speed_sensitivity_slider.setValue(70)  # 0.7 * 100
 
-        # 连接信号
+        # 连接信号：拖动时仅预览；释放时才入撤销栈
+        brush_size_slider.sliderPressed.connect(self.main_window.on_brush_size_pressed)
         brush_size_slider.valueChanged.connect(self.main_window.on_brush_size_changed)
+        brush_size_slider.sliderReleased.connect(self.main_window.on_brush_size_released)
+
+        flow_strength_slider.sliderPressed.connect(self.main_window.on_flow_strength_pressed)
         flow_strength_slider.valueChanged.connect(self.main_window.on_flow_strength_changed)
+        flow_strength_slider.sliderReleased.connect(self.main_window.on_flow_strength_released)
+
+        speed_sensitivity_slider.sliderPressed.connect(lambda: self.main_window._old_param_values.__setitem__("speed_sensitivity", self.main_window.param_registry.read("speed_sensitivity") if self.main_window.param_registry.has_key("speed_sensitivity") else self.main_window.canvas_widget.speed_sensitivity))
         speed_sensitivity_slider.valueChanged.connect(self.main_window.on_speed_sensitivity_changed)
+        speed_sensitivity_slider.sliderReleased.connect(lambda: self.main_window._on_speed_sensitivity_released_internal(speed_sensitivity_slider.value()))
 
         # 添加笔刷参数到布局
         brush_layout.addWidget(brush_size_label)
@@ -125,13 +134,13 @@ class PanelManager:
         seamless_checkbox = QCheckBox(translator.tr("enable_seamless"))
         seamless_checkbox.setFont(font)
         seamless_checkbox.setChecked(False)
-        seamless_checkbox.stateChanged.connect(self.main_window.on_seamless_changed)
+        seamless_checkbox.stateChanged.connect(lambda state: self._on_bool_param_changed("seamless_mode", state == Qt.Checked))
 
         # 预览重复选项
         preview_repeat_checkbox = QCheckBox(translator.tr("enable_preview_repeat"))
         preview_repeat_checkbox.setFont(font)
         preview_repeat_checkbox.setChecked(False)
-        preview_repeat_checkbox.stateChanged.connect(self.main_window.on_preview_repeat_changed)
+        preview_repeat_checkbox.stateChanged.connect(lambda state: self._on_bool_param_changed("preview_repeat", state == Qt.Checked))
 
         # 添加到模式设置布局
         mode_layout.addWidget(seamless_checkbox)
@@ -163,7 +172,9 @@ class PanelManager:
         flow_speed_slider.setMinimum(1)
         flow_speed_slider.setMaximum(200)
         flow_speed_slider.setValue(int(self.main_window.canvas_widget.flow_speed * 100))
+        flow_speed_slider.sliderPressed.connect(lambda: self.main_window._old_param_values.__setitem__("flow_speed", self.main_window.param_registry.read("flow_speed") if self.main_window.param_registry.has_key("flow_speed") else self.main_window.canvas_widget.flow_speed))
         flow_speed_slider.valueChanged.connect(self.main_window.on_flow_speed_changed)
+        flow_speed_slider.sliderReleased.connect(lambda: self.main_window.on_flow_speed_changed(flow_speed_slider.value(), True) if hasattr(self.main_window, 'on_flow_speed_changed') else None)
 
         # 流动距离控制
         flow_distortion_label = QLabel(f"{translator.tr('flow_distance')}: {self.main_window.canvas_widget.flow_distortion:.2f}")
@@ -173,7 +184,9 @@ class PanelManager:
         flow_distortion_slider.setMinimum(1)
         flow_distortion_slider.setMaximum(100)
         flow_distortion_slider.setValue(int(self.main_window.canvas_widget.flow_distortion * 100))
+        flow_distortion_slider.sliderPressed.connect(lambda: self.main_window._old_param_values.__setitem__("flow_distortion", self.main_window.param_registry.read("flow_distortion") if self.main_window.param_registry.has_key("flow_distortion") else self.main_window.canvas_widget.flow_distortion))
         flow_distortion_slider.valueChanged.connect(self.main_window.on_flow_distortion_changed)
+        flow_distortion_slider.sliderReleased.connect(lambda: self.main_window.on_flow_distortion_changed(flow_distortion_slider.value(), True) if hasattr(self.main_window, 'on_flow_distortion_changed') else None)
 
         # 添加到流动效果布局
         flow_layout.addWidget(flow_speed_label)
@@ -207,13 +220,13 @@ class PanelManager:
         invert_r_checkbox = QCheckBox(translator.tr("invert_r_channel"))
         invert_r_checkbox.setFont(font)
         invert_r_checkbox.setChecked(app_settings.invert_r_channel)
-        invert_r_checkbox.stateChanged.connect(self._on_invert_r_changed)
+        invert_r_checkbox.stateChanged.connect(lambda state: self._on_invert_param_changed("invert_r_channel", state == Qt.Checked))
 
         # G通道反转选项
         invert_g_checkbox = QCheckBox(translator.tr("invert_g_channel"))
         invert_g_checkbox.setFont(font)
         invert_g_checkbox.setChecked(app_settings.invert_g_channel)
-        invert_g_checkbox.stateChanged.connect(self._on_invert_g_changed)
+        invert_g_checkbox.stateChanged.connect(lambda state: self._on_invert_param_changed("invert_g_channel", state == Qt.Checked))
 
         # 当前朝向状态显示
         r_orient = translator.tr("r_channel_inverted") if app_settings.invert_r_channel else translator.tr("r_channel_normal")
@@ -235,19 +248,19 @@ class PanelManager:
         
         parent_layout.addWidget(channel_group)
 
-    def _on_invert_r_changed(self, state):
-        """处理R通道反转状态变化"""
-        from app_settings import app_settings
-        app_settings.set_invert_r_channel(state == Qt.Checked)
-        app_settings.save_settings()
-        self._update_orientation_label()
+    def _on_invert_param_changed(self, key, checked):
+        # 使用注册表写入并入栈
+        try:
+            old = self.main_window.param_registry.read(key)
+        except Exception:
+            from app_settings import app_settings
+            old = getattr(app_settings, 'invert_r_channel' if key == 'invert_r_channel' else 'invert_g_channel')
 
-    def _on_invert_g_changed(self, state):
-        """处理G通道反转状态变化"""
-        from app_settings import app_settings
-        app_settings.set_invert_g_channel(state == Qt.Checked)
-        app_settings.save_settings()
-        self._update_orientation_label()
+        self.main_window.param_registry.apply(key, bool(checked), transient=True)
+        if old != bool(checked) and self.main_window.param_registry.has_key(key):
+            from commands import ParameterChangeCommand
+            cmd = ParameterChangeCommand(self.main_window.param_registry, key, bool(old), bool(checked))
+            self.main_window.command_mgr.execute_command(cmd)
 
     def _update_orientation_label(self):
         """更新朝向状态标签"""
@@ -258,6 +271,20 @@ class PanelManager:
             r_orient = translator.tr("r_channel_inverted") if app_settings.invert_r_channel else translator.tr("r_channel_normal")
             g_orient = translator.tr("g_channel_inverted") if app_settings.invert_g_channel else translator.tr("g_channel_normal")
             self.controls["orientation_label"].setText(translator.tr("current_channel_orientation", r_orient=r_orient, g_orient=g_orient))
+
+    def _on_bool_param_changed(self, key, checked):
+        # 使用注册表写入并入栈
+        try:
+            old = self.main_window.param_registry.read(key)
+        except Exception:
+            from app_settings import app_settings
+            old = getattr(app_settings, 'seamless_mode' if key == 'seamless_mode' else 'preview_repeat')
+
+        self.main_window.param_registry.apply(key, bool(checked), transient=True)
+        if bool(old) != bool(checked) and self.main_window.param_registry.has_key(key):
+            from commands import ParameterChangeCommand
+            cmd = ParameterChangeCommand(self.main_window.param_registry, key, bool(old), bool(checked))
+            self.main_window.command_mgr.execute_command(cmd)
 
     def _create_fill_controls(self, parent_layout):
         """创建填充画布控件"""

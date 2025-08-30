@@ -3,6 +3,7 @@
 """
 
 from command_manager import Command
+from parameter_registry import ParameterRegistry
 import numpy as np
 
 class BrushStrokeCommand(Command):
@@ -31,22 +32,16 @@ class BrushStrokeCommand(Command):
 
 
 class ParameterChangeCommand(Command):
-    """参数变更命令 - 记录并管理参数变更的撤销/重做"""
+    """参数变更命令 - 通过注册表应用，保持 Model+UI 一致"""
     
-    def __init__(self, canvas, param_name, old_value, new_value):
-        self.canvas = canvas
-        self.param_name = param_name
+    def __init__(self, registry: ParameterRegistry, key, old_value, new_value):
+        self.registry = registry
+        self.key = key
         self.old_value = old_value
         self.new_value = new_value
 
     def execute(self):
-        if self.param_name == "brush_radius":
-            self.canvas.brush_radius = self.new_value
-        elif self.param_name == "brush_strength":
-            self.canvas.brush_strength = self.new_value
+        self.registry.apply(self.key, self.new_value, transient=False)
 
     def undo(self):
-        if self.param_name == "brush_radius":
-            self.canvas.brush_radius = self.old_value
-        elif self.param_name == "brush_strength":
-            self.canvas.brush_strength = self.old_value 
+        self.registry.apply(self.key, self.old_value, transient=False)
