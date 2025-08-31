@@ -386,16 +386,16 @@ class FlowmapCanvas(QOpenGLWidget):
     def init_shaders(self):
         # 使用辅助函数创建 shader program
         fragShader = ""
-        with open("flow_shader.glsl", encoding="utf-8") as f:
+        with open("shaders/flow_shader.glsl", encoding="utf-8") as f:
             fragShader = f.read()
 
         self.shader_program_id = create_shader_program(VERTEX_SHADER_SOURCE, fragShader)
         if self.shader_program_id == 0:
             QMessageBox.critical(self, "Shader Error", "Failed to compile or link shaders. Check console output.")
-            # Consider disabling rendering or exiting
+
         # 创建预览 shader（从外部文件加载）
         try:
-            with open("preview_shader.glsl", encoding="utf-8") as f:
+            with open("shaders/preview_shader.glsl", encoding="utf-8") as f:
                 preview_frag_source = f.read()
         except Exception as e:
             print(f"Failed to read preview_shader.glsl: {e}")
@@ -408,11 +408,19 @@ class FlowmapCanvas(QOpenGLWidget):
         if self.preview_shader_program_id == 0:
             QMessageBox.critical(self, "Shader Error", "Failed to compile preview shader.")
 
+        # Overlay Texture Shader
+        try:
+            with open("shaders/overlay_shader.glsl", encoding="utf-8") as f:
+                self.overlay_shader_program_id = create_shader_program(VERTEX_SHADER_SOURCE, f.read())
+        except Exception as e:
+            print(f"Failed to read overlay_texture_shader.glsl: {e}")
+            self.overlay_shader_program_id = 0
+
         # UV wire program
         try:
-            with open("uv_wire.vert", encoding="utf-8") as f:
+            with open("shaders/uv_wire_vs.glsl", encoding="utf-8") as f:
                 uv_vs = f.read()
-            with open("uv_wire.frag", encoding="utf-8") as f:
+            with open("shaders/uv_wire_ps.glsl", encoding="utf-8") as f:
                 uv_fs = f.read()
             self.uv_wire_program = create_shader_program(uv_vs, uv_fs)
         except Exception as e:

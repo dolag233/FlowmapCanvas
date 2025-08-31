@@ -5,14 +5,13 @@ a = Analysis(
     ['E:\\Repositories\\FlowmapCanvas\\main.py'],
     pathex=[],
     binaries=[],
-    datas=[('E:\\Repositories\\FlowmapCanvas\\flow_shader.glsl', 'flow_shader.glsl'), ('E:\\Repositories\\FlowmapCanvas\\background.png', 'background.png'), ('E:\\Repositories\\FlowmapCanvas\\style.qss', 'style.qss'), ('E:\\Repositories\\FlowmapCanvas\\app_settings.json', 'app_settings.json'), ('E:\\Repositories\\FlowmapCanvas\\FlowmapCanvas.ico', 'FlowmapCanvas.ico')],
+    datas=[('E:\\Repositories\\FlowmapCanvas\\shaders/flow_shader.glsl', 'shaders/flow_shader.glsl'), ('E:\\Repositories\\FlowmapCanvas\\shaders/preview_shader.glsl', 'shaders/preview_shader.glsl'), ('E:\\Repositories\\FlowmapCanvas\\shaders/overlay_shader.glsl', 'shaders/overlay_shader.glsl'), ('E:\\Repositories\\FlowmapCanvas\\shaders/uv_wire_vs.glsl', 'shaders/uv_wire_vs.glsl'), ('E:\\Repositories\\FlowmapCanvas\\shaders/uv_wire_ps.glsl', 'shaders/uv_wire_ps.glsl'), ('E:\\Repositories\\FlowmapCanvas\\background.png', 'background.png'), ('E:\\Repositories\\FlowmapCanvas\\style.qss', 'style.qss'), ('E:\\Repositories\\FlowmapCanvas\\app_settings.json', 'app_settings.json'), ('E:\\Repositories\\FlowmapCanvas\\FlowmapCanvas.ico', 'FlowmapCanvas.ico')],
     hiddenimports=['PyQt5.QtPrintSupport', 'numpy.random', 'OpenGL.platform.win32', 'OpenGL.arrays.ctypesarrays', 'OpenGL.arrays.numpymodule', 'OpenGL.converters', 'OpenGL.arrays.ctypespointers'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
     noarchive=False,
-    optimize=0,
 )
 pyz = PYZ(a.pure)
 

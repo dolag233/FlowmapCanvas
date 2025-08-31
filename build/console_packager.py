@@ -90,7 +90,11 @@ def print_log(message, level="INFO"):
 def check_resources(project_root):
     """检查必要的资源文件是否存在"""
     resources_to_check = [
-        "flow_shader.glsl",
+        "shaders/flow_shader.glsl",
+        "shaders/preview_shader.glsl",
+        "shaders/overlay_shader.glsl",
+        "shaders/uv_wire_vs.glsl",
+        "shaders/uv_wire_ps.glsl",
         "preview_shader.glsl",
         "background.png",
         "style.qss",

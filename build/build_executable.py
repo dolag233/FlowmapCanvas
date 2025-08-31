@@ -14,8 +14,11 @@ def ensure_path_exists(path):
 def copy_resources(dist_dir, project_root):
     """复制所需资源文件到打包目录"""
     resources = [
-        "flow_shader.glsl",
-        "preview_shader.glsl",
+        "shaders/preview_shader.glsl",
+        "shaders/flow_shader.glsl",
+        "shaders/overlay_shader.glsl",
+        "shaders/uv_wire_vs.glsl",
+        "shaders/uv_wire_ps.glsl",
         "background.png",
         "style.qss",
         "app_settings.json",
@@ -27,6 +30,10 @@ def copy_resources(dist_dir, project_root):
         source_path = os.path.join(project_root, res)
         if os.path.exists(source_path):
             target_path = os.path.join(dist_dir, res)
+            # 确保目标子目录存在
+            target_dir = os.path.dirname(target_path)
+            if not os.path.exists(target_dir):
+                os.makedirs(target_dir, exist_ok=True)
             shutil.copy2(source_path, target_path)
             print(f"已复制资源文件: {source_path} -> {target_path}")
         else:
@@ -147,7 +154,11 @@ def main():
     # 添加必要的数据文件
     sep = ";" if platform.system() == "Windows" else ":"
     data_files = [
-        "flow_shader.glsl",
+        "shaders/flow_shader.glsl",
+        "shaders/preview_shader.glsl",
+        "shaders/overlay_shader.glsl",
+        "shaders/uv_wire_vs.glsl",
+        "shaders/uv_wire_ps.glsl",
         "background.png",
         "style.qss",
         "app_settings.json",
@@ -159,6 +170,7 @@ def main():
         if os.path.exists(file_path):
             # 使用绝对路径来确保PyInstaller能找到文件
             # 但目标路径仍使用相对路径，保持简单
+            # 指定目标内的相对子目录，保持运行时按相对路径读取
             cmd.extend(["--add-data", f"{file_path}{sep}{data_file}"])
             print(f"添加数据文件: {file_path} -> {data_file}")
         else:
