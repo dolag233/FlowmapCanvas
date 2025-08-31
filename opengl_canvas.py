@@ -991,9 +991,7 @@ class FlowmapCanvas(QOpenGLWidget):
         last_pos_scene = self.mapToScene(last_widget_pos)
         current_pos_scene = self.mapToScene(current_widget_pos)
 
-        # 对于预览区域内的点击不应用笔刷效果
-        if self.is_in_preview(current_widget_pos):
-            return
+        # 允许在预览区域上绘制（仅在中键拖拽时才进入预览拖动逻辑）
 
         # 四方连续模式下，对坐标取模确保在[0,1]范围内
         if self.enable_seamless:
