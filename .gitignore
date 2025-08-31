@@ -8,3 +8,5 @@
 app_settings.json
 .cursorignore
 .cursor/rules/cursorrules.mdc
+build/FlowmapCanvas.spec
+TODO.md
