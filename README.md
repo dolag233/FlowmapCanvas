@@ -71,6 +71,7 @@ Flowmaps typically encode direction vectors in the red and green channels:
 - High-resolution texture processing
 - Optimized brush engine for smooth drawing experience
 - Support for both DirectX and OpenGL coordinate systems
+- OBJ import (native) and FBX via FBX2glTF → glTF/GLB pipeline
 
 ## Setting Up Python Environment
 
@@ -90,6 +91,8 @@ You must install Python in the `env/Python` directory structure:
 1. Run `start.bat` to start the program using the pre-configured environment
 2. Or manually run: `env\Python\python.exe main.py`
 
+### Build Development Environment
+See `docs/build_dev_environment.md` for building guide.
 ## How to Use
 
 1. Run `start.bat` to start the program
@@ -196,6 +199,9 @@ GPL v3 License - See the LICENSE file in the project for details.
 ### 运行应用程序
 1. 运行`start.bat`以使用预配置环境启动程序
 2. 或手动运行：`env\Python\python.exe main.py`
+
+### 搭建开发环境
+查看 `docs/build_dev_environment.md` 搭建方法。
 
 ## 使用方法
 
