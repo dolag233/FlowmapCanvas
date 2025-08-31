@@ -19,6 +19,8 @@ from ui_components import MenuBuilder
 from panel_manager import PanelManager
 from three_d_viewport import ThreeDViewport
 import numpy as np
+import subprocess
+import tempfile
 
 
 class MainWindow(QMainWindow):
@@ -367,7 +369,8 @@ class MainWindow(QMainWindow):
     def import_3d_model(self):
         from PyQt5.QtWidgets import QFileDialog
         from mesh_loader import load_obj
-        filter_str = "3D Models (*.obj);;" + translator.tr("image_files")
+        from gltf_loader import load_gltf
+        filter_str = "3D Models (*.obj *.gltf *.glb *.fbx);;" + translator.tr("image_files")
         path, _ = QFileDialog.getOpenFileName(self, translator.tr("import_3d_model"), '', filter_str)
         if not path:
             return
@@ -380,7 +383,17 @@ class MainWindow(QMainWindow):
             # 同步菜单项勾选
             self._set_action_checked_no_signal(self.menu_builder.get_action("toggle_3d_view"), True)
         try:
-            mesh = load_obj(path)
+            ext = os.path.splitext(path)[1].lower()
+            if ext in [".gltf", ".glb"]:
+                mesh = load_gltf(path)
+            elif ext == ".fbx":
+                glb_path = self._convert_fbx_to_gltf(path)
+                if not glb_path:
+                    self.status_bar.showMessage(translator.tr("import_failed"), 3000)
+                    return
+                mesh = load_gltf(glb_path)
+            else:
+                mesh = load_obj(path)
             ok = mesh is not None and mesh.positions.size > 0 and mesh.indices.size > 0
             if ok:
                 self._three_d_widget.load_mesh(mesh)
@@ -397,6 +410,57 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Failed to load mesh: {e}")
             self.status_bar.showMessage(translator.tr("import_failed"), 3000)
+
+    def _convert_fbx_to_gltf(self, fbx_path: str) -> str:
+        """Use FBX2glTF to convert FBX to GLB; returns path to .glb or empty string on failure.
+
+        Resolution order for the converter binary:
+        1) Environment variable FBX2GLTF_PATH
+        2) A local executable in the project directory or current working directory whose name contains 'fbx2gltf'
+        3) Fall back to invoking 'FBX2glTF' from PATH
+        """
+        exe = os.environ.get("FBX2GLTF_PATH", "")
+        if not exe:
+            # Search local directories for a binary whose name contains 'fbx2gltf'
+            try:
+                search_dirs = [os.path.dirname(os.path.abspath(__file__)), os.getcwd()]
+                found = ""
+                for d in search_dirs:
+                    try:
+                        for name in os.listdir(d):
+                            if "fbx2gltf" in name.lower():
+                                candidate = os.path.join(d, name)
+                                if os.path.isfile(candidate):
+                                    found = candidate
+                                    break
+                        if found:
+                            break
+                    except Exception:
+                        continue
+                if found:
+                    exe = found
+            except Exception:
+                pass
+        if not exe:
+            exe = "FBX2glTF"
+
+        temp_dir = tempfile.mkdtemp(prefix="fbx2gltf_")
+        out_base = os.path.join(temp_dir, "converted")
+        try:
+            proc = subprocess.run([exe, "-i", fbx_path, "-o", out_base, "-b"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            if proc.returncode != 0:
+                print(f"FBX2glTF failed (code {proc.returncode})\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}")
+                return ""
+            glb_path = out_base + ".glb"
+            if os.path.exists(glb_path):
+                return glb_path
+            for name in os.listdir(temp_dir):
+                if name.lower().endswith('.glb'):
+                    return os.path.join(temp_dir, name)
+            return ""
+        except FileNotFoundError:
+            print("FBX2glTF not found. Place the binary in project folder, set FBX2GLTF_PATH, or add to PATH.")
+            return ""
 
     def _schedule_canvas_layout_refresh(self):
         try:
