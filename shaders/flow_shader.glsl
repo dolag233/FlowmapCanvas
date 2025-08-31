@@ -13,15 +13,18 @@ uniform bool u_previewRepeat = false;
 uniform float u_mainViewScale = 1.0;
 uniform vec2 u_mainViewOffset = vec2(0.0, 0.0);
 uniform float u_useDirectX = 0;
+uniform float u_scale = 1.0;
 
 void main()
 {
     // 应用主视图的缩放和偏移
     vec2 mainTexCoords = TexCoords / u_mainViewScale - u_mainViewOffset;
+    vec2 backgroundTexCoords = mainTexCoords / u_scale;
     
     if (u_hasBaseMap) {
         // 处理主视图区域
         vec2 sampleCoords;
+        vec2 backgroundSampleCoords = fract(backgroundTexCoords);
         bool showBorder = false;
         bool inRange = true;
         
@@ -79,12 +82,12 @@ void main()
 
             if (u_previewRepeat) {
                 // 重复模式下，确保对纹理的采样也使用取模运算
-                color0 = texture(baseMap, fract(sampleCoords + offset0));
-                color1 = texture(baseMap, fract(sampleCoords + offset1));
+                color0 = texture(baseMap, fract(backgroundSampleCoords + offset0));
+                color1 = texture(baseMap, fract(backgroundSampleCoords + offset1));
             } else {
                 // 非重复模式，检查偏移后的坐标是否超出范围
-                vec2 samplePos0 = sampleCoords + offset0;
-                vec2 samplePos1 = sampleCoords + offset1;
+                vec2 samplePos0 = backgroundSampleCoords + offset0;
+                vec2 samplePos1 = backgroundSampleCoords + offset1;
 
                 // 对于超出范围的样本，我们可以选择夹紧或丢弃
                 samplePos0 = clamp(samplePos0, 0.0, 1.0);

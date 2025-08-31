@@ -190,11 +190,37 @@ class PanelManager:
         flow_distortion_slider.valueChanged.connect(self.main_window.on_flow_distortion_changed)
         flow_distortion_slider.sliderReleased.connect(lambda: self.main_window.on_flow_distortion_changed(flow_distortion_slider.value(), True) if hasattr(self.main_window, 'on_flow_distortion_changed') else None)
 
+        # 底图缩放控制 (0.5 ~ 4.0)
+        base_scale = getattr(self.main_window.canvas_widget, 'base_scale', 1.0)
+        base_scale_label = QLabel(f"{translator.tr('base_scale')}: {float(base_scale):.2f}")
+        base_scale_label.setFont(font)
+
+        base_scale_slider = QSlider(Qt.Horizontal)
+        base_scale_slider.setMinimum(10)   # 0.50
+        base_scale_slider.setMaximum(200)  # 4.00
+        base_scale_slider.setValue(int(round(float(base_scale) * 100)))
+
+        def on_base_scale_changed(v:int):
+            val = float(v) / 100.0
+            base_scale_label.setText(f"{translator.tr('base_scale')}: {val:.2f}")
+            # 实时应用（transient），松手时入撤销栈
+            try:
+                self.main_window.param_registry.apply("base_scale", val, transient=True)
+                self.main_window.canvas_widget.update()
+            except Exception:
+                pass
+
+        base_scale_slider.sliderPressed.connect(lambda: self._record_old_value("base_scale"))
+        base_scale_slider.valueChanged.connect(on_base_scale_changed)
+        base_scale_slider.sliderReleased.connect(lambda: self._commit_param_change("base_scale", base_scale_slider.value() / 100.0))
+
         # 添加到流动效果布局
         flow_layout.addWidget(flow_speed_label)
         flow_layout.addWidget(flow_speed_slider)
         flow_layout.addWidget(flow_distortion_label)
         flow_layout.addWidget(flow_distortion_slider)
+        flow_layout.addWidget(base_scale_label)
+        flow_layout.addWidget(base_scale_slider)
         flow_group.setLayout(flow_layout)
         
         # 存储控件引用
@@ -202,6 +228,8 @@ class PanelManager:
         self.controls["flow_speed_slider"] = flow_speed_slider
         self.controls["flow_distortion_label"] = flow_distortion_label
         self.controls["flow_distortion_slider"] = flow_distortion_slider
+        self.controls["base_scale_label"] = base_scale_label
+        self.controls["base_scale_slider"] = base_scale_slider
         
         parent_layout.addWidget(flow_group)
 

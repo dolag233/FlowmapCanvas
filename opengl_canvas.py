@@ -188,6 +188,7 @@ class FlowmapCanvas(QOpenGLWidget):
         # Flow effect parameters
         self.flow_speed = 0.5
         self.flow_distortion = 0.3
+        self.base_scale = 1.0
         self.anim_time = 0.0
         self.last_anim_update_time = time.time()
         self.is_animating = True
@@ -446,6 +447,7 @@ class FlowmapCanvas(QOpenGLWidget):
             timeLoc = glGetUniformLocation(self.shader_program_id, "u_time")
             speedLoc = glGetUniformLocation(self.shader_program_id, "u_flowSpeed")
             distLoc = glGetUniformLocation(self.shader_program_id, "u_flowDistortion")
+            baseScaleLoc = glGetUniformLocation(self.shader_program_id, "u_scale")
             previewRepeatLoc = glGetUniformLocation(self.shader_program_id, "u_previewRepeat")
             mainViewScaleLoc = glGetUniformLocation(self.shader_program_id, "u_mainViewScale")
             mainViewOffsetLoc = glGetUniformLocation(self.shader_program_id, "u_mainViewOffset")
@@ -469,6 +471,7 @@ class FlowmapCanvas(QOpenGLWidget):
             if timeLoc != -1: glUniform1f(timeLoc, self.anim_time)
             if speedLoc != -1: glUniform1f(speedLoc, self.flow_speed)
             if distLoc != -1: glUniform1f(distLoc, self.flow_distortion)
+            if baseScaleLoc != -1: glUniform1f(baseScaleLoc, float(getattr(self, 'base_scale', 1.0)))
             if previewRepeatLoc != -1: glUniform1i(previewRepeatLoc, 1 if self.preview_repeat else 0)
             if mainViewScaleLoc != -1: glUniform1f(mainViewScaleLoc, self.main_view_scale)
             if mainViewOffsetLoc != -1: glUniform2f(mainViewOffsetLoc, self.main_view_offset.x(), self.main_view_offset.y())

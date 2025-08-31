@@ -55,6 +55,7 @@ TRANSLATIONS = {
     "flow_effect_control": {"zh_CN": "流动效果控制", "en_US": "Flow Effect Control"},
     "flow_speed": {"zh_CN": "流动速度", "en_US": "Flow Speed"},
     "flow_distance": {"zh_CN": "流动距离", "en_US": "Flow Distance"},
+    "base_scale": {"zh_CN": "底图缩放", "en_US": "Base Scale"},
     "overlay_settings": {"zh_CN": "参考贴图", "en_US": "Reference Overlay"},
     "overlay_opacity": {"zh_CN": "透明度", "en_US": "Opacity"},
     "uv_overlay": {"zh_CN": "模型UV", "en_US": "Mesh UV"},

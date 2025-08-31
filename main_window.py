@@ -568,6 +568,21 @@ class MainWindow(QMainWindow):
             )
         )
 
+        # base_scale (0.5~4.0)
+        # 注意：仅作为渲染缩放传入 shader，不改变坐标映射
+        if not hasattr(c, 'base_scale'):
+            setattr(c, 'base_scale', 1.0)
+        self.param_registry.register(
+            "base_scale",
+            read_fn=lambda: float(getattr(c, 'base_scale', 1.0)),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "base_scale", float(v)),
+                (pm.get_control("base_scale_label").setText(f"{translator.tr('base_scale')}: {float(v):.2f}") if pm.get_control("base_scale_label") else None),
+                self._set_slider_value_no_signal(pm.get_control("base_scale_slider"), int(round(float(v) * 100))),
+                c.update()
+            )
+        )
+
         # seamless mode (bool)
         self.param_registry.register(
             "seamless_mode",
