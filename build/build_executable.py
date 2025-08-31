@@ -39,6 +39,62 @@ def copy_resources(dist_dir, project_root):
         else:
             print(f"警告: 找不到资源文件 {source_path}")
 
+def find_fbx2gltf(project_root):
+    """在常见位置寻找 FBX2glTF 可执行文件。
+    优先级：环境变量 FBX2GLTF_PATH -> 项目根目录/当前目录内包含 fbx2gltf 的文件 -> PATH。
+    返回绝对路径或空字符串。
+    """
+    # 1) 环境变量
+    env_path = os.environ.get("FBX2GLTF_PATH", "").strip()
+    if env_path and os.path.isfile(env_path):
+        return os.path.abspath(env_path)
+
+    # 2) 项目根目录/当前目录搜索
+    try:
+        search_dirs = [project_root, os.getcwd()]
+        for d in search_dirs:
+            for name in os.listdir(d):
+                if "fbx2gltf" in name.lower():
+                    candidate = os.path.join(d, name)
+                    if os.path.isfile(candidate):
+                        return os.path.abspath(candidate)
+    except Exception:
+        pass
+
+    # 3) PATH
+    try:
+        import shutil as _shutil
+        which = _shutil.which("FBX2glTF") or _shutil.which("fbx2gltf")
+        if which:
+            return os.path.abspath(which)
+    except Exception:
+        pass
+    return ""
+
+def copy_fbx2gltf(dist_dir, project_root):
+    """复制 FBX2glTF 到打包目录根部，便于离线运行。
+    - Windows: 复制 FBX2glTF.exe
+    - macOS/Linux: 复制 FBX2glTF 并确保可执行权限
+    若未找到则给出提示但不报错。
+    """
+    src = find_fbx2gltf(project_root)
+    if not src:
+        print("提示: 未找到 FBX2glTF，可手动放置至程序目录或配置 FBX2GLTF_PATH。")
+        return
+    name = os.path.basename(src)
+    dst = os.path.join(dist_dir, name)
+    try:
+        shutil.copy2(src, dst)
+        if platform.system() != "Windows":
+            try:
+                import stat
+                os.chmod(dst, os.stat(dst).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+            except Exception:
+                pass
+        print(f"已复制 FBX2glTF: {src} -> {dst}")
+    except Exception as e:
+        print(f"警告: 复制 FBX2glTF 失败: {e}")
+
 def check_pyinstaller(python_path):
     """检查PyInstaller是否已安装，如果没有则安装"""
     try:
@@ -219,6 +275,8 @@ def main():
             # 复制额外资源
             dist_dir = os.path.join("dist", app_name)
             copy_resources(dist_dir, project_root)
+            # 复制 FBX2glTF（若存在）
+            copy_fbx2gltf(dist_dir, project_root)
             
             # 创建启动脚本
             with open(os.path.join(dist_dir, "start.bat"), "w") as f:
