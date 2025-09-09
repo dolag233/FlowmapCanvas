@@ -41,6 +41,7 @@ uniform float u_flowDistortion;
 uniform float u_time;
 uniform bool u_repeat;
 uniform float u_useDirectX;
+uniform float u_scale;
 void main(){
   vec2 uv = vUV;
   if (u_hasBaseMap) {
@@ -53,12 +54,14 @@ void main(){
     vec2 offset1 = flowDir * phase1 * u_flowDistortion;
     vec4 color0;
     vec4 color1;
+    // Apply base scale to texture coordinates
+    vec2 scaledUV = uv / u_scale;
     if (u_repeat) {
-      color0 = texture(baseMap, fract(uv + offset0));
-      color1 = texture(baseMap, fract(uv + offset1));
+      color0 = texture(baseMap, fract(scaledUV + offset0));
+      color1 = texture(baseMap, fract(scaledUV + offset1));
     } else {
-      vec2 s0 = clamp(uv + offset0, 0.0, 1.0);
-      vec2 s1 = clamp(uv + offset1, 0.0, 1.0);
+      vec2 s0 = clamp(scaledUV + offset0, 0.0, 1.0);
+      vec2 s1 = clamp(scaledUV + offset1, 0.0, 1.0);
       color0 = texture(baseMap, s0);
       color1 = texture(baseMap, s1);
     }
@@ -271,6 +274,10 @@ class ThreeDViewport(QOpenGLWidget):
             udx_loc = glGetUniformLocation(self.program, "u_useDirectX")
             if udx_loc != -1:
                 glUniform1f(udx_loc, 1.0 if getattr(self._canvas, 'graphics_api_mode', 'opengl') == 'directx' else 0.0)
+            # Pass base scale from 2D canvas
+            scale_loc = glGetUniformLocation(self.program, "u_scale")
+            if scale_loc != -1:
+                glUniform1f(scale_loc, float(getattr(self._canvas, 'base_scale', 1.0)))
         has_loc = glGetUniformLocation(self.program, "u_hasBaseMap")
         if has_loc != -1:
             glUniform1i(has_loc, int_has_base)
