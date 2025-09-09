@@ -4,7 +4,7 @@
 
 from PyQt5.QtWidgets import (
     QDockWidget, QVBoxLayout, QHBoxLayout, QWidget, QLabel,
-    QSlider, QGroupBox, QCheckBox, QPushButton
+    QSlider, QGroupBox, QCheckBox, QPushButton, QComboBox
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -285,6 +285,29 @@ class PanelManager:
         layout = QVBoxLayout()
         layout.setSpacing(8)
 
+        # UV Set Selection
+        uv_set_label = QLabel(f"{translator.tr('uv_set')}: UV0")
+        uv_set_combo = QComboBox()
+        uv_set_combo.addItem("UV0")  # Default item
+        
+        def on_uv_set_changed(index):
+            if index >= 0:
+                uv_set_name = uv_set_combo.itemText(index)
+                uv_set_label.setText(f"{translator.tr('uv_set')}: {uv_set_name}")
+                # Apply UV set change through registry
+                try:
+                    if hasattr(self.main_window, 'param_registry') and self.main_window.param_registry:
+                        self.main_window.param_registry.apply("selected_uv_set", index, transient=False)
+                    # Update 3D viewport and 2D UV overlay
+                    self._update_uv_set_selection(index)
+                except Exception as e:
+                    print(f"UV set change error: {e}")
+        
+        uv_set_combo.currentIndexChanged.connect(on_uv_set_changed)
+        
+        layout.addWidget(uv_set_label)
+        layout.addWidget(uv_set_combo)
+
         # Opacity
         opacity_label = QLabel(f"{translator.tr('uv_opacity')}: 0.70")
         opacity_slider = QSlider(Qt.Horizontal)
@@ -343,6 +366,8 @@ class PanelManager:
 
         # 记录控件并默认隐藏（由MainWindow在3D开关时显示/隐藏）
         self.controls["uv_group"] = uv_group
+        self.controls["uv_set_label"] = uv_set_label
+        self.controls["uv_set_combo"] = uv_set_combo
         self.controls["uv_opacity_label"] = opacity_label
         self.controls["uv_opacity_slider"] = opacity_slider
         self.controls["uv_width_label"] = width_label
@@ -545,4 +570,40 @@ class PanelManager:
             
     def get_shortcut_labels(self):
         """获取快捷键标签列表"""
-        return self.controls.get("shortcut_labels", []) 
+        return self.controls.get("shortcut_labels", [])
+    
+    def update_uv_sets(self, uv_set_names):
+        """更新UV集选择下拉框"""
+        try:
+            combo = self.controls.get("uv_set_combo")
+            if combo and uv_set_names:
+                combo.blockSignals(True)
+                combo.clear()
+                for name in uv_set_names:
+                    combo.addItem(name)
+                combo.setCurrentIndex(0)  # 默认选择第一个UV集
+                combo.blockSignals(False)
+                
+                # 更新标签
+                label = self.controls.get("uv_set_label")
+                if label and uv_set_names:
+                    from localization import translator
+                    label.setText(f"{translator.tr('uv_set')}: {uv_set_names[0]}")
+        except Exception as e:
+            print(f"update_uv_sets error: {e}")
+    
+    def _update_uv_set_selection(self, uv_set_index):
+        """更新UV集选择，通知3D视口和2D覆盖"""
+        try:
+            # 通知3D视口切换UV集
+            if hasattr(self.main_window, '_three_d_widget') and self.main_window._three_d_widget:
+                self.main_window._three_d_widget.set_active_uv_set(uv_set_index)
+            
+            # 更新2D UV覆盖显示
+            if hasattr(self.main_window, '_three_d_widget') and self.main_window._three_d_widget:
+                uvs, indices = self.main_window._three_d_widget.get_uv_wire_data(uv_set_index)
+                if uvs is not None and indices is not None:
+                    self.main_window.canvas_widget.set_uv_overlay_data(uvs, indices)
+                    self.main_window.canvas_widget.update()
+        except Exception as e:
+            print(f"_update_uv_set_selection error: {e}") 

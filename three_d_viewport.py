@@ -135,9 +135,13 @@ class ThreeDViewport(QOpenGLWidget):
 
         # placeholders
         self._positions = np.zeros((0,3), dtype=np.float32)
-        self._uvs = np.zeros((0,2), dtype=np.float32)
+        self._uvs = np.zeros((0,2), dtype=np.float32)  # primary UV set
         self._normals = np.zeros((0,3), dtype=np.float32)
         self._indices = np.zeros((0,), dtype=np.uint32)
+        # Multi-UV support
+        self._uv_sets = []  # List of UV sets
+        self._uv_set_names = []  # Names of UV sets
+        self._active_uv_set = 0  # Currently active UV set index
 
         self.setMouseTracking(True)
 
@@ -166,13 +170,54 @@ class ThreeDViewport(QOpenGLWidget):
         except Exception:
             pass
 
-    def get_uv_wire_data(self):
-        """Return current model UVs and triangle indices for 2D UV wire rendering."""
+    def get_uv_wire_data(self, uv_set_index=None):
+        """Return model UVs and triangle indices for 2D UV wire rendering.
+        
+        Args:
+            uv_set_index: UV set index to use. If None, uses active UV set.
+        """
         try:
-            return (self._uvs.copy() if hasattr(self, '_uvs') else None,
-                    self._indices.copy() if hasattr(self, '_indices') else None)
+            if uv_set_index is None:
+                uv_set_index = self._active_uv_set
+                
+            # Get UV set data
+            if 0 <= uv_set_index < len(self._uv_sets):
+                uvs = self._uv_sets[uv_set_index].copy()
+            elif hasattr(self, '_uvs'):
+                uvs = self._uvs.copy()
+            else:
+                return (None, None)
+                
+            indices = self._indices.copy() if hasattr(self, '_indices') else None
+            return (uvs, indices)
         except Exception:
             return (None, None)
+    
+    def set_active_uv_set(self, uv_set_index):
+        """Set the active UV set for 3D rendering and painting."""
+        try:
+            if 0 <= uv_set_index < len(self._uv_sets):
+                self._active_uv_set = uv_set_index
+                # Update current UV data for rendering and raycasting
+                self._uvs = self._uv_sets[uv_set_index].astype(np.float32, copy=False)
+                
+                # Recreate vertex buffers with new UV data for 3D rendering
+                self.makeCurrent()
+                try:
+                    self._create_buffers()
+                    self.update()  # Trigger a repaint
+                except Exception as e:
+                    print(f"Buffer recreation error: {e}")
+                finally:
+                    self.doneCurrent()
+                
+                print(f"Switched to UV set {uv_set_index}: {self._uv_set_names[uv_set_index] if uv_set_index < len(self._uv_set_names) else 'Unknown'}")
+        except Exception as e:
+            print(f"set_active_uv_set error: {e}")
+    
+    def get_uv_set_names(self):
+        """Return list of UV set names."""
+        return self._uv_set_names.copy() if self._uv_set_names else []
 
     def initializeGL(self):
         try:
@@ -378,9 +423,22 @@ class ThreeDViewport(QOpenGLWidget):
     def load_mesh(self, mesh: MeshData):
         """接受脱耦的MeshData进行上传，并进行居中/缩放适配"""
         self._positions = mesh.positions.astype(np.float32, copy=False)
-        self._uvs = mesh.uvs.astype(np.float32, copy=False)
+        self._uvs = mesh.uvs.astype(np.float32, copy=False)  # primary UV set
         self._normals = mesh.normals.astype(np.float32, copy=False)
         self._indices = mesh.indices.astype(np.uint32, copy=False)
+        
+        # Load UV sets
+        if hasattr(mesh, 'uv_sets') and mesh.uv_sets:
+            self._uv_sets = [uv_set.astype(np.float32, copy=False) for uv_set in mesh.uv_sets]
+        else:
+            self._uv_sets = [self._uvs] if self._uvs.size > 0 else []
+            
+        if hasattr(mesh, 'uv_set_names') and mesh.uv_set_names:
+            self._uv_set_names = mesh.uv_set_names.copy()
+        else:
+            self._uv_set_names = ["UV0"] if self._uvs.size > 0 else []
+            
+        self._active_uv_set = 0  # Reset to first UV set
         try:
             self._tri_indices = self._indices.reshape(-1, 3)
         except Exception:
@@ -753,8 +811,12 @@ class ThreeDViewport(QOpenGLWidget):
         if tris is None or tris.size == 0:
             return None
         i0, i1, i2 = tris[int(tri_idx)]
-        UV = self._uvs if self._uvs.size else None
-        if UV is None:
+        # Use the currently selected UV set instead of always using the first one
+        if 0 <= self._active_uv_set < len(self._uv_sets):
+            UV = self._uv_sets[self._active_uv_set]
+        else:
+            UV = self._uvs if self._uvs.size else None
+        if UV is None or UV.size == 0:
             return None
         w = 1.0 - u - v
         uv0 = UV[int(i0)]; uv1 = UV[int(i1)]; uv2 = UV[int(i2)]

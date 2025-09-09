@@ -5,9 +5,11 @@ from dataclasses import dataclass
 @dataclass
 class MeshData:
     positions: np.ndarray  # (N,3) float32
-    uvs: np.ndarray        # (N,2) float32
+    uvs: np.ndarray        # (N,2) float32 - primary UV set (for backward compatibility)
     normals: np.ndarray    # (N,3) float32
     indices: np.ndarray    # (M,)  uint32 (triangles)
+    uv_sets: list[np.ndarray] = None  # List of UV sets [(N,2) float32, ...]
+    uv_set_names: list[str] = None    # Names for UV sets ["UV0", "UV1", ...]
 
 
 def load_obj(path: str) -> MeshData:
@@ -74,11 +76,14 @@ def load_obj(path: str) -> MeshData:
             i2 = get_index(*face[i+1])
             indices.extend([i0, i1, i2])
 
+    final_uvs = np.array(out_uv, dtype=np.float32)
     return MeshData(
         positions=np.array(out_pos, dtype=np.float32),
-        uvs=np.array(out_uv, dtype=np.float32),
+        uvs=final_uvs,  # primary UV set for backward compatibility
         normals=np.array(out_nor, dtype=np.float32),
         indices=np.array(indices, dtype=np.uint32),
+        uv_sets=[final_uvs] if final_uvs.size > 0 else [],
+        uv_set_names=["UV0"] if final_uvs.size > 0 else [],
     )
 
 

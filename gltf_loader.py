@@ -158,7 +158,8 @@ def load_gltf(path: str) -> Optional[MeshData]:
     world_cache: dict = {}
     all_pos: list = []
     all_nrm: list = []
-    all_uv: list = []
+    all_uv: list = []  # primary UV set for backward compatibility
+    all_uv_sets: dict = {}  # UV set index -> list of UV arrays
     all_indices: list = []
     vert_offset = 0
 
@@ -176,7 +177,6 @@ def load_gltf(path: str) -> Optional[MeshData]:
                 attrs = prim.attributes
                 pos_acc = getattr(attrs, 'POSITION', None)
                 nrm_acc = getattr(attrs, 'NORMAL', None)
-                uv_acc = getattr(attrs, 'TEXCOORD_0', None)
                 if pos_acc is None:
                     continue
                 P = _read_accessor(gltf, pos_acc, base_dir).astype(np.float32, copy=False)
@@ -199,17 +199,37 @@ def load_gltf(path: str) -> Optional[MeshData]:
                     NR = np.zeros_like(P)
                 all_nrm.append(NR)
 
-                if uv_acc is not None:
-                    UV = _read_accessor(gltf, uv_acc, base_dir).astype(np.float32, copy=False)
-                    if UV.shape[1] != 2:
-                        UV = UV.reshape(-1, 2)
-                    # Flip V to match our OBJ/OpenGL pipeline (v origin at bottom)
-                    if not UV.flags.writeable:
-                        UV = UV.copy()
-                    UV[:,1] = 1.0 - UV[:,1]
-                else:
-                    UV = np.zeros((P.shape[0], 2), dtype=np.float32)
-                all_uv.append(UV)
+                # Collect all UV sets (TEXCOORD_0, TEXCOORD_1, etc.)
+                primary_uv = None
+                for attr_name in dir(attrs):
+                    if attr_name.startswith('TEXCOORD_'):
+                        try:
+                            uv_index = int(attr_name.split('_')[1])
+                            uv_acc = getattr(attrs, attr_name, None)
+                            if uv_acc is not None:
+                                UV = _read_accessor(gltf, uv_acc, base_dir).astype(np.float32, copy=False)
+                                if UV.shape[1] != 2:
+                                    UV = UV.reshape(-1, 2)
+                                # Flip V to match our OBJ/OpenGL pipeline (v origin at bottom)
+                                if not UV.flags.writeable:
+                                    UV = UV.copy()
+                                UV[:,1] = 1.0 - UV[:,1]
+                                
+                                # Store in UV sets dictionary
+                                if uv_index not in all_uv_sets:
+                                    all_uv_sets[uv_index] = []
+                                all_uv_sets[uv_index].append(UV)
+                                
+                                # Use TEXCOORD_0 as primary UV for backward compatibility
+                                if uv_index == 0:
+                                    primary_uv = UV
+                        except (ValueError, AttributeError):
+                            continue
+                
+                # If no UV sets found, create zero UV
+                if primary_uv is None:
+                    primary_uv = np.zeros((P.shape[0], 2), dtype=np.float32)
+                all_uv.append(primary_uv)
 
                 all_indices.append(idx.astype(np.uint32, copy=False) + np.uint32(vert_offset))
                 vert_offset += P.shape[0]
@@ -224,8 +244,33 @@ def load_gltf(path: str) -> Optional[MeshData]:
         return None
     positions = np.vstack(all_pos)
     normals = np.vstack(all_nrm)
-    uvs = np.vstack(all_uv)
+    uvs = np.vstack(all_uv)  # primary UV set
     indices = np.concatenate(all_indices).astype(np.uint32, copy=False)
-    return MeshData(positions, uvs, normals, indices)
+    
+    # Build UV sets list
+    uv_sets = []
+    uv_set_names = []
+    if all_uv_sets:
+        # Sort UV sets by index
+        sorted_uv_indices = sorted(all_uv_sets.keys())
+        for uv_idx in sorted_uv_indices:
+            if all_uv_sets[uv_idx]:
+                combined_uv = np.vstack(all_uv_sets[uv_idx])
+                uv_sets.append(combined_uv)
+                uv_set_names.append(f"UV{uv_idx}")
+    
+    # Fallback: if no UV sets collected, use primary UV
+    if not uv_sets and uvs.size > 0:
+        uv_sets = [uvs]
+        uv_set_names = ["UV0"]
+    
+    return MeshData(
+        positions=positions,
+        uvs=uvs,
+        normals=normals,
+        indices=indices,
+        uv_sets=uv_sets,
+        uv_set_names=uv_set_names
+    )
 
 

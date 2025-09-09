@@ -400,6 +400,12 @@ class MainWindow(QMainWindow):
                 self.status_bar.showMessage(translator.tr("import_success"), 3000)
                 # 推送UV数据到2D
                 try:
+                    # 更新UV集选择UI
+                    if hasattr(mesh, 'uv_set_names') and mesh.uv_set_names:
+                        self.panel_manager.update_uv_sets(mesh.uv_set_names)
+                        self.selected_uv_set = 0  # 重置为第一个UV集
+                    
+                    # 设置默认UV覆盖数据（使用第一个UV集）
                     self.canvas_widget.set_uv_overlay_data(mesh.uvs, mesh.indices)
                     self.canvas_widget.uv_wire_enabled = True
                     self.canvas_widget.update()
@@ -661,6 +667,18 @@ class MainWindow(QMainWindow):
                 self._set_slider_value_no_signal(pm.get_control("overlay_opacity_slider"), int(round(float(v) * 100))),
                 pm.get_control("overlay_opacity_label").setText(f"{translator.tr('overlay_opacity')}: {float(v):.2f}") if pm.get_control("overlay_opacity_label") else None,
                 self.canvas_widget.update()
+            )
+        )
+
+        # selected_uv_set (int index)
+        if not hasattr(self, 'selected_uv_set'):
+            self.selected_uv_set = 0
+        self.param_registry.register(
+            "selected_uv_set",
+            read_fn=lambda: int(getattr(self, 'selected_uv_set', 0)),
+            apply_fn=lambda v, transient=False: (
+                setattr(self, 'selected_uv_set', int(v)),
+                self._update_uv_set_selection(int(v))
             )
         )
 
@@ -1498,4 +1516,19 @@ class MainWindow(QMainWindow):
             action.blockSignals(False)
         except Exception:
             pass
+
+    def _update_uv_set_selection(self, uv_set_index):
+        """更新UV集选择，同步3D视口和2D覆盖"""
+        try:
+            if hasattr(self, '_three_d_widget') and self._three_d_widget:
+                # 通知3D视口切换UV集
+                self._three_d_widget.set_active_uv_set(uv_set_index)
+                
+                # 获取新UV集的数据并更新2D覆盖
+                uvs, indices = self._three_d_widget.get_uv_wire_data(uv_set_index)
+                if uvs is not None and indices is not None:
+                    self.canvas_widget.set_uv_overlay_data(uvs, indices)
+                    self.canvas_widget.update()
+        except Exception as e:
+            print(f"_update_uv_set_selection error: {e}")
 
