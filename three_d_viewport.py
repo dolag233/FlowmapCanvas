@@ -691,12 +691,48 @@ class ThreeDViewport(QOpenGLWidget):
         if not hasattr(self, '_canvas') or self._canvas is None:
             return
         try:
+            # 计算UV空间中的移动距离（用于3D速度感应）
+            delta_u = curr_uv[0] - last_uv[0]
+            delta_v = curr_uv[1] - last_uv[1]
+            
+            # 处理UV坐标的边界跨越（类似2D的四方连续处理）
+            if abs(delta_u) > 0.5:
+                delta_u = -np.sign(delta_u) * (1.0 - abs(delta_u))
+            if abs(delta_v) > 0.5:
+                delta_v = -np.sign(delta_v) * (1.0 - abs(delta_v))
+            
+            # 计算UV空间中的移动长度（模拟2D中的flow vector长度）
+            uv_movement_length = np.sqrt(delta_u**2 + delta_v**2)
+            
+            # 将UV移动距离转换为类似2D纹理像素的尺度（用于速度计算）
+            # 假设UV空间[0,1]对应纹理的宽高，转换为像素尺度的移动
+            canvas_tex_w, canvas_tex_h = getattr(self._canvas, 'texture_size', (1024, 1024))
+            pixel_movement_length = uv_movement_length * max(canvas_tex_w, canvas_tex_h)
+            
+            # 应用与2D相同的速度感应计算
+            speed_factor = min(1.0, pixel_movement_length / 100.0)
+            speed_sensitivity = getattr(self._canvas, 'speed_sensitivity', 0.7)
+            speed_factor = speed_factor * speed_sensitivity + (1.0 - speed_sensitivity) * 0.5
+            
+            # 临时保存原始笔刷强度
+            original_strength = getattr(self._canvas, 'brush_strength', 0.5)
+            adjusted_strength = original_strength * speed_factor
+            
+            # 临时修改画布的笔刷强度
+            self._canvas.brush_strength = adjusted_strength
+            
             # 将UV转换成 2D画布的 scene 坐标（scene_y 与 2D 定义保持同向，上为正）
             last_scene = QPointF(float(last_uv[0]), float(last_uv[1]))
             curr_scene = QPointF(float(curr_uv[0]), float(curr_uv[1]))
             last_widget = self._canvas.mapFromScene(last_scene)
             curr_widget = self._canvas.mapFromScene(curr_scene)
+            
+            # 调用2D画布的绘制方法
             self._canvas.apply_brush(last_widget, curr_widget)
+            
+            # 恢复原始笔刷强度
+            self._canvas.brush_strength = original_strength
+            
             self._canvas.update()
         except Exception as e:
             print(f"invoke_canvas_brush error: {e}")
