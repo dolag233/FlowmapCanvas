@@ -10,6 +10,7 @@ import ctypes
 
 from mesh_loader import MeshData
 from brush_cursor import BrushCursorWidget
+from tangent_space import TangentSpaceGenerator
 
 
 SIMPLE_VERT = """
@@ -142,6 +143,16 @@ class ThreeDViewport(QOpenGLWidget):
         self._uv_sets = []  # List of UV sets
         self._uv_set_names = []  # Names of UV sets
         self._active_uv_set = 0  # Currently active UV set index
+        
+        # Tangent space data (Mikk-based, computed from first UV set)
+        self._tangent_generator = TangentSpaceGenerator()
+        self._tangents = np.zeros((0,3), dtype=np.float32)
+        self._bitangents = np.zeros((0,3), dtype=np.float32)
+        
+        # World-space hit cache for seamless strokes
+        self._last_hit_world_pos = None
+        self._last_hit_triangle_idx = None
+        self._last_hit_barycentric = None
 
         self.setMouseTracking(True)
 
@@ -445,6 +456,10 @@ class ThreeDViewport(QOpenGLWidget):
             self._tri_indices = np.zeros((0,3), dtype=np.uint32)
         # fit
         self._fit_model_matrix()
+        
+        # Compute tangent space first (required for seamless painting)
+        self._compute_tangent_space()
+        
         # upload
         self.makeCurrent()
         try:
@@ -477,6 +492,36 @@ class ThreeDViewport(QOpenGLWidget):
         finally:
             try: self.doneCurrent()
             except Exception: pass
+
+    def _compute_tangent_space(self):
+        """Compute tangent and bitangent vectors using Mikk tangent space algorithm.
+        Based on the first UV set (UV0) for consistency across seams.
+        """
+        try:
+            if self._positions.size == 0 or self._normals.size == 0 or self._indices.size == 0:
+                self._tangents = np.zeros((0,3), dtype=np.float32)
+                self._bitangents = np.zeros((0,3), dtype=np.float32)
+                return
+                
+            # Always use first UV set for tangent computation (Mikk requirement)
+            uv0 = self._uv_sets[0] if len(self._uv_sets) > 0 else self._uvs
+            if uv0 is None or uv0.size == 0:
+                # Fallback to default UV coordinates if no UV data
+                uv0 = np.zeros((self._positions.shape[0], 2), dtype=np.float32)
+                
+            # Use the high-performance tangent space generator
+            self._tangents, self._bitangents = self._tangent_generator.compute_tangent_space(
+                self._positions, self._normals, uv0, self._indices
+            )
+            
+            print(f"Computed tangent space for {self._positions.shape[0]} vertices using Mikk algorithm")
+            
+        except Exception as e:
+            print(f"Tangent space computation error: {e}")
+            # Fallback: create identity tangent space
+            vcount = self._positions.shape[0] if self._positions.size > 0 else 0
+            self._tangents = np.tile([1.0, 0.0, 0.0], (vcount, 1)).astype(np.float32)
+            self._bitangents = np.tile([0.0, 1.0, 0.0], (vcount, 1)).astype(np.float32)
 
     def _compute_view_matrix(self):
         cy = np.cos(self._cam_yaw)
@@ -524,13 +569,18 @@ class ThreeDViewport(QOpenGLWidget):
                 self._is_painting = False
                 self._hide_brush_cursor()
             else:
-                # 左键绘制
-                uv = self._raycast_uv(event.pos())
-                if uv is not None:
+                # 左键绘制（无缝：基于TBN在切线空间编码方向）
+                hit_info = self._raycast_full_hit_info(event.pos())
+                if hit_info is not None:
                     self._is_painting = True
-                    self._last_hit_uv = uv
+                    self._last_hit_uv = hit_info['uv']
+                    self._last_hit_world_pos = hit_info['world_pos']
+                    self._last_hit_triangle_idx = hit_info['triangle_idx']
+                    self._last_hit_barycentric = hit_info['barycentric']
+                    # 初始dab，使用微小默认方向
+                    zero_dir = np.array([0.0, 0.0, 0.01], dtype=np.float32)
+                    self._invoke_canvas_brush_tangent_dir(hit_info, zero_dir)
                     self.paint_started.emit()
-                    self._invoke_canvas_brush(self._last_hit_uv, uv)
                     self._show_brush_cursor(event.pos())
         elif event.button() == Qt.MiddleButton:
             if event.modifiers() & Qt.ControlModifier:
@@ -563,6 +613,9 @@ class ThreeDViewport(QOpenGLWidget):
             if self._is_painting:
                 self._is_painting = False
                 self._last_hit_uv = None
+                self._last_hit_world_pos = None
+                self._last_hit_triangle_idx = None
+                self._last_hit_barycentric = None
                 self.paint_finished.emit()
                 self._hide_brush_cursor()
             self._is_rotating = False
@@ -647,11 +700,22 @@ class ThreeDViewport(QOpenGLWidget):
             self.update()
             return
         if self._is_painting and (event.buttons() & Qt.LeftButton):
-            uv = self._raycast_uv(event.pos())
-            if uv is not None and self._last_hit_uv is not None:
-                self._invoke_canvas_brush(self._last_hit_uv, uv)
-                self._last_hit_uv = uv
+            # CPU无缝：根据世界空间移动方向映射到切线空间
+            hit_info = self._raycast_full_hit_info(event.pos())
+            if hit_info is not None and self._last_hit_world_pos is not None:
+                world_direction = hit_info['world_pos'] - self._last_hit_world_pos
+                self._invoke_canvas_brush_tangent_dir(hit_info, world_direction)
+                # 更新状态
+                self._last_hit_uv = hit_info['uv']
+                self._last_hit_world_pos = hit_info['world_pos']
+                self._last_hit_triangle_idx = hit_info['triangle_idx']
+                self._last_hit_barycentric = hit_info['barycentric']
                 self._show_brush_cursor(event.pos())
+                try:
+                    if hasattr(self._canvas, 'update'):
+                        self._canvas.update()
+                except Exception:
+                    pass
                 self.update()
             return
         if self._is_rotating:
@@ -795,6 +859,101 @@ class ThreeDViewport(QOpenGLWidget):
         except Exception as e:
             print(f"invoke_canvas_brush error: {e}")
 
+    def _invoke_canvas_brush_tangent_dir(self, hit_info, world_direction):
+        """在CPU上将世界方向映射到切线空间，编码为flow，再在2D画布上以UV路径调用笔刷。
+        
+        这是无缝3D绘制的核心：
+        1. 获取击中点的切线空间基向量(TBN)
+        2. 将世界空间的绘制方向转换到切线空间
+        3. 在切线空间中编码flow方向，确保跨UV接缝的一致性
+        4. 调用2D画布绘制，同时应用速度感应
+        """
+        try:
+            if not hasattr(self, '_canvas') or self._canvas is None:
+                return
+            if hit_info is None or world_direction is None:
+                return
+            if self._tangents.size == 0 or self._bitangents.size == 0:
+                # Fallback to simple UV painting if no tangent space
+                curr_uv = hit_info['uv']
+                last_uv = self._last_hit_uv if self._last_hit_uv is not None else curr_uv
+                self._invoke_canvas_brush(last_uv, curr_uv)
+                return
+
+            # 使用高性能的切线空间生成器进行世界到切线空间的转换
+            vertex_indices = hit_info['vertex_indices']
+            barycentric = hit_info['barycentric']
+            
+            # 转换世界方向到切线空间（仅XY分量用于flow编码）
+            if np.linalg.norm(world_direction) > 1e-8:
+                flow_dir_2d = self._tangent_generator.world_to_tangent_direction(
+                    world_direction, vertex_indices, barycentric
+                )
+                
+                # 归一化2D流向
+                if np.linalg.norm(flow_dir_2d) > 1e-8:
+                    flow_dir_2d = flow_dir_2d / np.linalg.norm(flow_dir_2d)
+                else:
+                    flow_dir_2d = np.array([1.0, 0.0], dtype=np.float32)
+            else:
+                # 默认流向
+                flow_dir_2d = np.array([1.0, 0.0], dtype=np.float32)
+
+            # 当前UV（已是活动UV集）
+            curr_uv = hit_info['uv']
+            last_uv = self._last_hit_uv if self._last_hit_uv is not None else curr_uv
+
+            # 改进的速度感应：基于UV空间距离而非世界距离，确保接缝处一致性
+            delta_u = curr_uv[0] - last_uv[0]
+            delta_v = curr_uv[1] - last_uv[1]
+            
+            # 处理UV坐标的边界跨越（类似2D的四方连续处理）
+            if abs(delta_u) > 0.5:
+                delta_u = -np.sign(delta_u) * (1.0 - abs(delta_u))
+            if abs(delta_v) > 0.5:
+                delta_v = -np.sign(delta_v) * (1.0 - abs(delta_v))
+            
+            # 计算UV空间中的移动长度
+            uv_movement_length = np.sqrt(delta_u**2 + delta_v**2)
+            
+            # 转换为像素等效距离
+            tex_w, tex_h = getattr(self._canvas, 'texture_size', (1024, 1024))
+            pixel_movement_length = uv_movement_length * max(tex_w, tex_h)
+            
+            # 应用与2D相同的速度感应计算
+            speed_factor = min(1.0, pixel_movement_length / 100.0)
+            speed_sensitivity = getattr(self._canvas, 'speed_sensitivity', 0.7)
+            speed_factor = speed_factor * speed_sensitivity + (1.0 - speed_sensitivity) * 0.5
+
+            # 临时调强度
+            original_strength = getattr(self._canvas, 'brush_strength', 0.5)
+            adjusted_strength = original_strength * speed_factor
+            self._canvas.brush_strength = adjusted_strength
+
+            # 通过极短的UV段触发2D画布（避免大跨度造成缝隙）
+            # 这里我们仍然使用UV坐标进行绘制，但flow方向已经在切线空间中正确编码
+            last_scene = QPointF(float(last_uv[0]), float(last_uv[1]))
+            curr_scene = QPointF(float(curr_uv[0]), float(curr_uv[1]))
+            last_widget = self._canvas.mapFromScene(last_scene)
+            curr_widget = self._canvas.mapFromScene(curr_scene)
+            
+            # 使用切线空间计算的流向进行无缝绘制
+            # 这是解决UV接缝问题的关键！
+            self._canvas.apply_brush(last_widget, curr_widget, explicit_flow_dir=flow_dir_2d)
+
+            # 恢复强度
+            self._canvas.brush_strength = original_strength
+
+        except Exception as e:
+            print(f"invoke_canvas_brush_tangent_dir error: {e}")
+            # Fallback to simple UV painting
+            try:
+                curr_uv = hit_info['uv'] if hit_info else (0.0, 0.0)
+                last_uv = self._last_hit_uv if self._last_hit_uv is not None else curr_uv
+                self._invoke_canvas_brush(last_uv, curr_uv)
+            except Exception:
+                pass
+
     # ---------- Ray casting ----------
     def _raycast_uv(self, mouse_pos):
         if not self.model_loaded or self._positions.size == 0 or self._indices.size == 0:
@@ -825,6 +984,44 @@ class ThreeDViewport(QOpenGLWidget):
         u = float(hit_uv[0]) % 1.0
         v = float(hit_uv[1]) % 1.0
         return (u, v)
+
+    def _raycast_full_hit_info(self, mouse_pos):
+        """Return full hit info for seam-aware painting: uv (active set), world_pos, triangle, barycentric."""
+        if not self.model_loaded or self._positions.size == 0 or self._indices.size == 0:
+            return None
+        ray_origin, ray_dir = self._compute_object_space_ray(mouse_pos.x(), mouse_pos.y())
+        if ray_origin is None:
+            return None
+        t, tri_idx, u, v = self._raycast_bvh(ray_origin, ray_dir)
+        if t is None or tri_idx is None:
+            return None
+        tris = getattr(self, '_tri_indices', None)
+        if tris is None or tris.size == 0:
+            return None
+        i0, i1, i2 = tris[int(tri_idx)]
+        
+        # World hit point
+        obj_hit = ray_origin + ray_dir * float(t)
+        world_hit = (self._model_matrix @ np.array([obj_hit[0], obj_hit[1], obj_hit[2], 1.0]))[:3]
+        
+        # UV from active set
+        if 0 <= self._active_uv_set < len(self._uv_sets):
+            UV = self._uv_sets[self._active_uv_set]
+        else:
+            UV = self._uvs if self._uvs.size else None
+        if UV is None or UV.size == 0:
+            return None
+        w = 1.0 - u - v
+        uv0 = UV[int(i0)]; uv1 = UV[int(i1)]; uv2 = UV[int(i2)]
+        hit_uv = uv0 * w + uv1 * u + uv2 * v
+        
+        return {
+            'uv': (float(hit_uv[0]) % 1.0, float(hit_uv[1]) % 1.0),
+            'world_pos': world_hit.astype(np.float32),
+            'triangle_idx': int(tri_idx),
+            'barycentric': np.array([u, v, w], dtype=np.float32),
+            'vertex_indices': np.array([i0, i1, i2], dtype=np.int32)
+        }
 
     def _compute_object_space_ray(self, mx, my):
         try:
@@ -1077,6 +1274,9 @@ class ThreeDViewport(QOpenGLWidget):
             if self._is_painting:
                 self._is_painting = False
                 self._last_hit_uv = None
+                self._last_hit_world_pos = None
+                self._last_hit_triangle_idx = None
+                self._last_hit_barycentric = None
                 try:
                     self.paint_finished.emit()
                 except Exception:
@@ -1094,6 +1294,9 @@ class ThreeDViewport(QOpenGLWidget):
             if self._is_painting:
                 self._is_painting = False
                 self._last_hit_uv = None
+                self._last_hit_world_pos = None
+                self._last_hit_triangle_idx = None
+                self._last_hit_barycentric = None
                 try:
                     self.paint_finished.emit()
                 except Exception:

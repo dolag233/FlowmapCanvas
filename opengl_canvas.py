@@ -984,10 +984,15 @@ class FlowmapCanvas(QOpenGLWidget):
             # 清除防重入标志
             self._in_release_event = False
 
-    def apply_brush(self, last_widget_pos, current_widget_pos):
+    def apply_brush(self, last_widget_pos, current_widget_pos, explicit_flow_dir=None):
         """
         应用笔刷效果到纹理上，处理常规绘制和四方连续绘制
         优化版本：使用笔刷数据缓存、局部纹理更新和向量化操作
+        
+        Args:
+            last_widget_pos: 上一个窗口坐标位置
+            current_widget_pos: 当前窗口坐标位置
+            explicit_flow_dir: 显式的flow方向(2D numpy数组)，用于3D无缝绘制
         """
         # 检查窗口和纹理尺寸是否有效
         widget_size = self.size()
@@ -1025,22 +1030,29 @@ class FlowmapCanvas(QOpenGLWidget):
         center_x_tex = int(current_pos_scene.x() * tex_w)
         center_y_tex = int(current_pos_scene.y() * tex_h)  # 不需要翻转，因为 shader 使用的是 Y 轴向下的坐标系
 
-        # 计算流向向量（两点间的差值）
-        delta_x_scene = current_pos_scene.x() - last_pos_scene.x()
-        delta_y_scene = current_pos_scene.y() - last_pos_scene.y()
+        # 计算流向向量
+        if explicit_flow_dir is not None:
+            # 使用3D无缝绘制提供的显式flow方向（已经在切线空间中正确编码）
+            # 应用与2D相同的符号约定：负号保持直观性
+            flow_x = -explicit_flow_dir[0] * 100.0  # 负号保持与2D一致的直观性
+            flow_y = -explicit_flow_dir[1] * 100.0  # 负号保持与2D一致的直观性
+        else:
+            # 传统方式：基于两点间的差值计算
+            delta_x_scene = current_pos_scene.x() - last_pos_scene.x()
+            delta_y_scene = current_pos_scene.y() - last_pos_scene.y()
 
-        # 四方连续模式下处理跨边界的情况（例如从右边缘到左边缘）
-        if self.enable_seamless:
-            # 如果横向差值大于0.5，表示跨越了水平边界
-            if abs(delta_x_scene) > 0.5:
-                delta_x_scene = -np.sign(delta_x_scene) * (1.0 - abs(delta_x_scene))
-            # 如果纵向差值大于0.5，表示跨越了垂直边界
-            if abs(delta_y_scene) > 0.5:
-                delta_y_scene = -np.sign(delta_y_scene) * (1.0 - abs(delta_y_scene))
+            # 四方连续模式下处理跨边界的情况（例如从右边缘到左边缘）
+            if self.enable_seamless:
+                # 如果横向差值大于0.5，表示跨越了水平边界
+                if abs(delta_x_scene) > 0.5:
+                    delta_x_scene = -np.sign(delta_x_scene) * (1.0 - abs(delta_x_scene))
+                # 如果纵向差值大于0.5，表示跨越了垂直边界
+                if abs(delta_y_scene) > 0.5:
+                    delta_y_scene = -np.sign(delta_y_scene) * (1.0 - abs(delta_y_scene))
 
-        # 计算流向在纹理空间的大小
-        flow_x = -delta_x_scene * tex_w  # 负号是为了保持直观性：向右移动表示材质向左流动
-        flow_y = -delta_y_scene * tex_h  # 修改：使用负号确保 Y 轴方向一致
+            # 计算流向在纹理空间的大小
+            flow_x = -delta_x_scene * tex_w  # 负号是为了保持直观性：向右移动表示材质向左流动
+            flow_y = -delta_y_scene * tex_h  # 修改：使用负号确保 Y 轴方向一致
 
         # 测试输出当前位置和转换后的纹理坐标，用于调试
         # print(f"Scene: ({current_pos_scene.x():.3f}, {current_pos_scene.y():.3f}) -> Texture: ({center_x_tex}, {center_y_tex})")
