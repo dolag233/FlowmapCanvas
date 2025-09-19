@@ -27,8 +27,13 @@ class PanelManager:
         
     def create_parameter_panel(self):
         """创建参数面板"""
-        param_dock = QDockWidget('', self.main_window)  # 移除标题
+        param_dock = QDockWidget('', self.main_window)  # 移除标题文字
         param_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)  # 禁止折叠和移动
+        
+        # 隐藏标题栏但保留dock功能 - 设置一个空的widget作为标题栏
+        empty_title_bar = QWidget()
+        empty_title_bar.setFixedHeight(0)  # 设置高度为0，完全隐藏
+        param_dock.setTitleBarWidget(empty_title_bar)
         
         # 设置dock的宽度限制，确保不会被压缩
         param_dock.setMinimumWidth(280)
