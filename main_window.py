@@ -76,11 +76,14 @@ class MainWindow(QMainWindow):
         QSurfaceFormat.setDefaultFormat(fmt)
         
         self.canvas_widget = FlowmapCanvas()
-        self.canvas_widget.setMinimumSize(800, 600)
+        # 移除最小尺寸限制，让2D和3D界面可以灵活调整大小
         self.setCentralWidget(self.canvas_widget)
-        # 固定Dock布局，防止相对排布变化
+        
+        # 使用画布自身的纵横比校正（在shader中letterbox），不再在这里锁尺寸
+        
+        # 启用dock嵌套，支持2D和3D并列显示及分割线调整
         try:
-            self.setDockNestingEnabled(False)
+            self.setDockNestingEnabled(True)
         except Exception:
             pass
         # 记录当前鼠标位置用于笔刷预览
@@ -295,11 +298,17 @@ class MainWindow(QMainWindow):
                     self._three_d_widget.paint_finished.connect(lambda: self._set_2d_input_suppressed(False))
                 except Exception:
                     pass
-                dock = QDockWidget(translator.tr("menu_viewport"), self)
+                dock = QDockWidget('', self)  # 移除标题文字
                 dock.setWidget(self._three_d_widget)
-                # 固定Dock：只允许关闭，不允许拖拽/浮动，且仅位于右侧
-                dock.setAllowedAreas(Qt.RightDockWidgetArea)
-                dock.setFeatures(QDockWidget.DockWidgetClosable)
+                # 允许3D dock覆盖到2D区域：支持左右和顶部区域
+                dock.setAllowedAreas(Qt.RightDockWidgetArea | Qt.LeftDockWidgetArea | Qt.TopDockWidgetArea)
+                # 不设置任何特性限制，保持默认功能以支持分割线调整和覆盖
+                # dock.setFeatures() 不调用，使用默认特性
+                
+                # 隐藏标题栏但保留分割功能 - 设置一个空的widget作为标题栏
+                empty_title_bar = QWidget()
+                empty_title_bar.setFixedHeight(0)  # 设置高度为0，完全隐藏
+                dock.setTitleBarWidget(empty_title_bar)
                 try:
                     dock.visibilityChanged.connect(self._on_three_d_visibility_changed)
                 except Exception:
@@ -346,12 +355,9 @@ class MainWindow(QMainWindow):
                 return
             # 以2D画布高度为基准，初始化3D Dock宽高
             base = max(200, int(self.canvas_widget.height()))
-            # 设置最小宽度，避免过小
-            self._three_d_dock.setMinimumWidth(min(800, base))
-            # 使用 resizeDocks 设置宽度占比
+            # 移除最小尺寸限制，让用户可以自由调整2D和3D的比例
+            # 使用 resizeDocks 设置初始宽度占比
             self.resizeDocks([self._three_d_dock], [base], Qt.Horizontal)
-            # 设置 ThreeDViewport 的最小高度，力求与2D高度匹配
-            self._three_d_widget.setMinimumHeight(base)
             # 扩展主窗口总宽度，防止中心区域被挤压折叠
             current_dock_w = max(0, int(self._three_d_dock.width()))
             target_dock_w = base
@@ -1368,8 +1374,8 @@ class MainWindow(QMainWindow):
         # 将窗口尺寸设置为合适的大小
         self.resize(window_width, window_height)
         
-        # 关键：设置canvas的固定纵横比，保证等比缩放
-        self.canvas_widget.setFixedHeight(int((self.canvas_widget.width()) / image_aspect_ratio))
+        # 初始化时仅刷新画布内部纵横比与预览，无需锁定尺寸
+        self._refresh_canvas_layout()
         
         # 立即更新预览窗口大小
         self.canvas_widget.update_preview_size()
@@ -1379,6 +1385,61 @@ class MainWindow(QMainWindow):
         self.canvas_widget.update()
         
         print(f"窗口初始化为 {window_width}x{window_height}，图像比例: {image_aspect_ratio:.2f}")
+    
+    # 保留早先的 resizeEvent 定义（文件前部已有），此处不再重载，避免冲突
+
+    def _setup_canvas_container(self):
+        """设置2D画布容器，支持在非正方形窗口中居中显示正方形内容"""
+        # 当前实现保持简单，后续可以扩展为更复杂的布局管理
+        pass
+    
+    def _update_canvas_layout(self):
+        """更新2D画布布局，确保在非正方形区域中正确显示"""
+        try:
+            if not hasattr(self, 'canvas_widget') or not self.canvas_widget:
+                return
+                
+            # 获取中央区域的实际可用尺寸
+            central_widget = self.centralWidget()
+            if not central_widget:
+                return
+                
+            # 获取中央区域的尺寸
+            width = central_widget.width()
+            height = central_widget.height()
+            
+            if width <= 0 or height <= 0:
+                return
+            
+            # 如果有纹理比例，使用纹理比例
+            if hasattr(self.canvas_widget, 'texture_original_aspect_ratio') and self.canvas_widget.texture_original_aspect_ratio:
+                aspect_ratio = self.canvas_widget.texture_original_aspect_ratio
+                
+                # 计算在当前区域内能容纳的最大尺寸
+                if width / height > aspect_ratio:
+                    # 中央区域比纹理更宽，以高度为基准
+                    canvas_height = height
+                    canvas_width = int(height * aspect_ratio)
+                else:
+                    # 中央区域比纹理更高，以宽度为基准
+                    canvas_width = width
+                    canvas_height = int(width / aspect_ratio)
+            else:
+                # 没有纹理时，使用正方形，以较小边为准
+                square_size = min(width, height)
+                canvas_width = canvas_height = square_size
+            
+            # 确保尺寸不为0
+            canvas_width = max(100, canvas_width)
+            canvas_height = max(100, canvas_height)
+            
+            # 更新画布尺寸
+            self.canvas_widget.setFixedSize(canvas_width, canvas_height)
+            
+            print(f"Canvas layout updated: {canvas_width}x{canvas_height} in central area {width}x{height}")
+            
+        except Exception as e:
+            print(f"_update_canvas_layout error: {e}")
 
     def apply_modern_style(self):
         """应用现代化样式"""

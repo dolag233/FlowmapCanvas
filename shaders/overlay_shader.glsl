@@ -6,9 +6,12 @@ uniform float u_opacity;
 uniform float u_mainViewScale;
 uniform vec2 u_mainViewOffset;
 uniform bool u_repeat;
+uniform vec2 u_aspectScale;
+uniform vec2 u_aspectOffset;
 void main(){
-    // Map screen TexCoords into the main view's texture space
-    vec2 uv = TexCoords / u_mainViewScale - u_mainViewOffset;
+    // 覆盖模式：先做纵横比cover校正，再映射到主视图空间
+    vec2 corrected = (TexCoords - u_aspectOffset) / u_aspectScale;
+    vec2 uv = corrected / u_mainViewScale - u_mainViewOffset;
     if (u_repeat) {
         uv = fract(uv);
     } else {

@@ -148,6 +148,11 @@ class FlowmapCanvas(QOpenGLWidget):
         self.main_view_offset_correction_x = 0.0  # X方向的偏移校正
         self.main_view_offset_correction_y = 0.0  # Y方向的偏移校正
         self.preview_aspect_ratio = 1.0  # 预览窗口的宽高比，默认为1:1
+        # cover 模式下的屏幕->内容校正参数（传给shader）
+        self.aspect_scale_x = 1.0
+        self.aspect_scale_y = 1.0
+        self.aspect_offset_x = 0.0
+        self.aspect_offset_y = 0.0
 
         # Flowmap 数据 (H, W, RGBA)
         self.flowmap_data = np.zeros((self.texture_size[1], self.texture_size[0], 4), dtype=np.float32)
@@ -476,6 +481,13 @@ class FlowmapCanvas(QOpenGLWidget):
             if mainViewScaleLoc != -1: glUniform1f(mainViewScaleLoc, self.main_view_scale)
             if mainViewOffsetLoc != -1: glUniform2f(mainViewOffsetLoc, self.main_view_offset.x(), self.main_view_offset.y())
             if useDirectX != -1: glUniform1f(useDirectX, 1.0 if self.graphics_api_mode == "directx" else 0.0)
+            # 传递cover纵横比校正
+            loc_as = glGetUniformLocation(self.shader_program_id, "u_aspectScale")
+            if loc_as != -1:
+                glUniform2f(loc_as, float(self.aspect_scale_x), float(self.aspect_scale_y))
+            loc_ao = glGetUniformLocation(self.shader_program_id, "u_aspectOffset")
+            if loc_ao != -1:
+                glUniform2f(loc_ao, float(self.aspect_offset_x), float(self.aspect_offset_y))
 
             glBindVertexArray(self.vao)
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
@@ -502,6 +514,13 @@ class FlowmapCanvas(QOpenGLWidget):
                 mo = glGetUniformLocation(self.uv_wire_program, "u_mainViewOffset")
                 if mo != -1:
                     glUniform2f(mo, self.main_view_offset.x(), self.main_view_offset.y())
+                # 传递cover纵横比校正
+                loc_as = glGetUniformLocation(self.uv_wire_program, "u_aspectScale")
+                if loc_as != -1:
+                    glUniform2f(loc_as, float(self.aspect_scale_x), float(self.aspect_scale_y))
+                loc_ao = glGetUniformLocation(self.uv_wire_program, "u_aspectOffset")
+                if loc_ao != -1:
+                    glUniform2f(loc_ao, float(self.aspect_offset_x), float(self.aspect_offset_y))
                 col = glGetUniformLocation(self.uv_wire_program, "u_color")
                 if col != -1:
                     glUniform3f(col, 0.95, 0.5, 0.1)
@@ -543,6 +562,13 @@ class FlowmapCanvas(QOpenGLWidget):
                 loc_rep = glGetUniformLocation(self.overlay_shader_program_id, "u_repeat")
                 if loc_rep != -1:
                     glUniform1i(loc_rep, 1 if self.preview_repeat else 0)
+                # 传递cover纵横比校正
+                loc_as = glGetUniformLocation(self.overlay_shader_program_id, "u_aspectScale")
+                if loc_as != -1:
+                    glUniform2f(loc_as, float(self.aspect_scale_x), float(self.aspect_scale_y))
+                loc_ao = glGetUniformLocation(self.overlay_shader_program_id, "u_aspectOffset")
+                if loc_ao != -1:
+                    glUniform2f(loc_ao, float(self.aspect_offset_x), float(self.aspect_offset_y))
 
                 glBindVertexArray(self.vao)
                 glDrawArrays(GL_TRIANGLE_STRIP, 0, 4)
@@ -588,64 +614,61 @@ class FlowmapCanvas(QOpenGLWidget):
             glDisable(GL_BLEND)
 
     def resizeGL(self, w, h):
-        """处理窗口大小变化事件，确保严格等比例缩放"""
+        """处理窗口大小变化事件。
+        取消对widget高度的强制锁定，仅更新视口与内部纵横比校正，
+        让画布始终填满分配区域，避免出现外部空白条。"""
         # 检查尺寸有效性
         if w <= 0 or h <= 0:
             return
-            
+
         # 保存当前窗口尺寸
         self.window_width = w
         self.window_height = h
-            
+
         # 设置OpenGL视口
         glViewport(0, 0, w, h)
-        
+
         # 确保纹理宽高比存在
         if not hasattr(self, 'texture_original_aspect_ratio') or self.texture_original_aspect_ratio <= 0:
             if self.texture_size[0] > 0 and self.texture_size[1] > 0:
                 self.texture_original_aspect_ratio = self.texture_size[0] / self.texture_size[1]
             else:
                 self.texture_original_aspect_ratio = 1.0
-        
-        # 检查当前窗口宽高比与纹理宽高比是否一致
-        current_aspect_ratio = w / h
-        
-        # 如果宽高比差异过大（容差为0.01），则强制调整窗口大小为等比缩放
-        if abs(current_aspect_ratio - self.texture_original_aspect_ratio) > 0.01:
-            # 静态变量防止递归
-            if not hasattr(self, '_is_adjusting_size') or not self._is_adjusting_size:
-                self._is_adjusting_size = True
-                
-                # 检查父窗口
-                parent = self.parent()
-                if isinstance(parent, QMainWindow):
-                    # 保持宽度不变，调整高度
-                    new_height = int(w / self.texture_original_aspect_ratio)
-                    
-                    # 设置固定高度确保等比例
-                    self.setFixedHeight(new_height)
-                    
-                    print(f"调整窗口大小以保持等比例: {w}x{new_height}，纹理比例: {self.texture_original_aspect_ratio:.3f}")
-                    
-                    # 更新内部状态
-                    self.window_height = new_height
-                    
-                    # 重置标志
-                    QTimer.singleShot(0, lambda: setattr(self, '_is_adjusting_size', False))
-                    return
-                self._is_adjusting_size = False
-        
-        # 更新纵横比校正
+
+        # 计算 cover 模式的纵横比校正（内容填满而不拉伸：多余部分裁剪）
+        self._update_cover_aspect()
+        # 更新 shader 用的比例校正
         self.update_aspect_ratio()
-        
-        # 更新预览窗口大小
         self.update_preview_size()
-        
-        # 发出大小调整信号
         self.resized.emit()
-        
-        # 强制重绘
         self.update()
+
+    def _update_cover_aspect(self):
+        """计算屏幕到内容坐标的cover映射参数: Tex' = (Tex - offset)/scale
+        目标：内容等比填满widget，超出部分裁剪，不产生拉伸。"""
+        tex_w, tex_h = self.texture_size
+        if tex_w <= 0 or tex_h <= 0:
+            self.aspect_scale_x = self.aspect_scale_y = 1.0
+            self.aspect_offset_x = self.aspect_offset_y = 0.0
+            return
+
+        win_w = max(1, self.width())
+        win_h = max(1, self.height())
+        r_tex = float(tex_w) / float(tex_h)
+        r_win = float(win_w) / float(win_h)
+
+        if r_win > r_tex:
+            # widget 更宽：应左右裁剪，但我们在screen->content中需要把“裁剪轴”的scale放在Y以避免XY反置
+            self.aspect_scale_x = 1.0
+            self.aspect_scale_y = r_win / r_tex
+            self.aspect_offset_x = 0.0
+            self.aspect_offset_y = (1.0 - self.aspect_scale_y) * 0.5
+        else:
+            # widget 更高（更窄）：应上下裁剪，对应将scale放在X
+            self.aspect_scale_x = r_tex / r_win
+            self.aspect_scale_y = 1.0
+            self.aspect_offset_x = (1.0 - self.aspect_scale_x) * 0.5
+            self.aspect_offset_y = 0.0
 
     def wheelEvent(self, event):
         """处理鼠标滚轮事件，用于缩放主视图"""
@@ -1944,18 +1967,22 @@ class FlowmapCanvas(QOpenGLWidget):
         if self.width() <= 0 or self.height() <= 0:
             return QPointF(0, 0)
 
-        # 归一化窗口坐标到[0,1]范围，保持左上角为(0,0)的约定
+        # 归一化窗口坐标到[0,1]范围（屏幕坐标，左上角为(0,0)）
         norm_x = pos.x() / self.width()
-        norm_y = pos.y() / self.height()
+        norm_y_screen = pos.y() / self.height()
 
-        # 严格按照 shader 中的公式: mainTexCoords = TexCoords / u_mainViewScale - u_mainViewOffset
-        # 其中 TexCoords 就是我们的归一化窗口坐标
-        scene_x = norm_x / self.main_view_scale - self.main_view_offset.x()
+        # 将屏幕坐标转换为 shader 的 TexCoords（左上角为(0,0)但Y向上为1）：
+        # 屏幕y向下增大，因此 TexCoords.y = 1 - norm_y_screen
+        tex_x = norm_x
+        tex_y = 1.0 - norm_y_screen
 
-        # 关键修复：Y 轴的处理
-        # 1. 在 mouseMoveEvent 中，我们使用 -dy 实际上对应了 shader 中坐标系的 Y 轴向下
-        # 2. 因此，这里的计算也应该使用相同的约定
-        scene_y = (1 - norm_y) / self.main_view_scale - self.main_view_offset.y()
+        # 应用 cover 的纵横比逆变换：corrected = (TexCoords - offset) / scale
+        corrected_x = (tex_x - self.aspect_offset_x) / max(1e-6, self.aspect_scale_x)
+        corrected_y = (tex_y - self.aspect_offset_y) / max(1e-6, self.aspect_scale_y)
+
+        # 应用主视图缩放与偏移的逆变换
+        scene_x = corrected_x / self.main_view_scale - self.main_view_offset.x()
+        scene_y = corrected_y / self.main_view_scale - self.main_view_offset.y()
 
         return QPointF(scene_x, scene_y)
 
@@ -1967,15 +1994,21 @@ class FlowmapCanvas(QOpenGLWidget):
         1. 从 shader 公式反推: TexCoords = (mainTexCoords + u_mainViewOffset) * u_mainViewScale
         2. 保持与 mapToScene 和 shader 一致的坐标系约定
         """
-        # 应用主视图缩放和偏移的逆变换，严格与 mapToScene 互为逆
-        # mapToScene: scene_x = norm_x/scale - offset_x => norm_x = (scene_x + offset_x) * scale
-        # mapToScene: scene_y = (1 - norm_y)/scale - offset_y => norm_y = 1 - (scene_y + offset_y) * scale
-        norm_x = (scene_pos.x() + self.main_view_offset.x()) * self.main_view_scale
-        norm_y = 1.0 - (scene_pos.y() + self.main_view_offset.y()) * self.main_view_scale
+        # 1) 内容坐标 -> TexCoords（shader空间）
+        tex_x = (scene_pos.x() + self.main_view_offset.x()) * self.main_view_scale
+        tex_y = (scene_pos.y() + self.main_view_offset.y()) * self.main_view_scale
 
-        # 将归一化坐标转换回窗口坐标
+        # 2) 应用 cover 的纵横比正向变换：Tex' = Tex * scale + offset
+        tex_x = tex_x * self.aspect_scale_x + self.aspect_offset_x
+        tex_y = tex_y * self.aspect_scale_y + self.aspect_offset_y
+
+        # 3) TexCoords -> 屏幕归一化坐标（y翻转）
+        norm_x = tex_x
+        norm_y_screen = 1.0 - tex_y
+
+        # 4) 转换为窗口像素坐标
         widget_x = norm_x * self.width()
-        widget_y = norm_y * self.height()
+        widget_y = norm_y_screen * self.height()
 
         return QPoint(int(widget_x), int(widget_y))
 
@@ -2200,32 +2233,33 @@ class FlowmapCanvas(QOpenGLWidget):
         # 计算纹理的宽高比
         texture_aspect_ratio = float(self.texture_size[0]) / float(self.texture_size[1])
         
-        # 根据窗口大小动态调整预览窗口的大小
+        # 根据窗口大小动态调整预览窗口的像素宽度
         if self.window_width < 400 or self.window_height < 300:
-            # 对于小窗口，使用更小的预览窗口
-            preview_scale_factor = 0.15  # 预览窗口占窗口较小的比例
+            preview_scale_factor = 0.15  # 相对于窗口宽度
         else:
-            # 正常窗口大小下的预览窗口比例
-            preview_scale_factor = 0.2  # 预览窗口占窗口的比例
-        
-        # 基于预览窗口所占窗口宽度的比例计算实际宽度
-        preview_width = preview_scale_factor
-        
-        # 直接基于纹理比例计算高度，保持相同比例
-        # 关键修复：使用纹理原始比例，而不是再次应用纹理比例到预览大小计算中
-        preview_height = preview_width / texture_aspect_ratio
-        
-        # 确保预览窗口不会太大或太小
-        if preview_height > 0.35:
-            preview_height = 0.35
-            preview_width = preview_height * texture_aspect_ratio
-        
-        # 确保预览窗口不会太小
-        if preview_width < 0.1:
-            preview_width = 0.1
-            preview_height = preview_width / texture_aspect_ratio
-        
-        # 更新预览窗口大小
+            preview_scale_factor = 0.2
+
+        # 先用像素计算，避免因不同坐标归一化导致的纵横比误差
+        pv_w_px = int(self.window_width * preview_scale_factor)
+        pv_h_px = int(max(1, pv_w_px / texture_aspect_ratio))
+
+        # 上限：不超过窗口高度的35%
+        max_h_px = int(self.window_height * 0.35)
+        if pv_h_px > max_h_px:
+            pv_h_px = max_h_px
+            pv_w_px = int(pv_h_px * texture_aspect_ratio)
+
+        # 下限：宽度至少占窗口宽的10%
+        min_w_px = int(self.window_width * 0.1)
+        if pv_w_px < min_w_px:
+            pv_w_px = min_w_px
+            pv_h_px = int(max(1, pv_w_px / texture_aspect_ratio))
+
+        # 转回归一化比例
+        preview_width = pv_w_px / float(self.window_width)
+        preview_height = pv_h_px / float(self.window_height)
+
+        # 更新预览窗口大小（归一化）
         self.preview_size = QSizeF(preview_width, preview_height)
         
         # 添加适当的边距

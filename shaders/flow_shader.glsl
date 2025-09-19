@@ -14,11 +14,15 @@ uniform float u_mainViewScale = 1.0;
 uniform vec2 u_mainViewOffset = vec2(0.0, 0.0);
 uniform float u_useDirectX = 0;
 uniform float u_scale = 1.0;
+uniform vec2 u_aspectScale;     // screen->content 尺寸缩放（cover）
+uniform vec2 u_aspectOffset;    // screen->content 偏移（cover 居中）
 
 void main()
 {
-    // 应用主视图的缩放和偏移
-    vec2 mainTexCoords = TexCoords / u_mainViewScale - u_mainViewOffset;
+    // 先做屏幕到内容坐标的纵横比校正（cover：填满并裁剪）
+    vec2 corrected = (TexCoords - u_aspectOffset) / u_aspectScale;
+    // 再应用主视图缩放与偏移（缩放/平移）
+    vec2 mainTexCoords = corrected / u_mainViewScale - u_mainViewOffset;
     vec2 backgroundTexCoords = mainTexCoords / u_scale;
     
     if (u_hasBaseMap) {

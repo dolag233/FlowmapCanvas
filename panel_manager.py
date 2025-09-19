@@ -30,6 +30,10 @@ class PanelManager:
         param_dock = QDockWidget('', self.main_window)  # 移除标题
         param_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)  # 禁止折叠和移动
         
+        # 设置dock的宽度限制，确保不会被压缩
+        param_dock.setMinimumWidth(280)
+        param_dock.setMaximumWidth(320)
+        
         # 创建滚动区域
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)  # 允许内容自动调整大小
@@ -37,6 +41,10 @@ class PanelManager:
         scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # 需要时显示垂直滚动条
         scroll_area.setFrameStyle(0)  # 移除边框，使其更美观
         # 滚动条样式现在统一在 style.qss 中管理
+        
+        # 设置滚动区域的宽度限制，防止被压缩
+        scroll_area.setMinimumWidth(280)  # 设置最小宽度
+        scroll_area.setMaximumWidth(320)  # 设置最大宽度，防止过宽
         
         # 创建内容widget
         param_widget = QWidget()
