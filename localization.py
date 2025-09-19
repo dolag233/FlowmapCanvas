@@ -69,15 +69,15 @@ TRANSLATIONS = {
     
     # 快捷键组
     "shortcuts": {"zh_CN": "快捷键", "en_US": "Shortcuts"},
+    "shortcuts_2d": {"zh_CN": "快捷键", "en_US": "Shortcuts"},
+    "shortcuts_3d": {"zh_CN": "快捷键", "en_US": "Shortcuts"},
     "shortcut_left_click": {"zh_CN": "左键: 绘制流向", "en_US": "Left Click: Draw Flow"},
     "shortcut_right_click": {"zh_CN": "右键: 擦除(恢复中性值)", "en_US": "Right Click: Erase (Reset to Neutral)"},
-    "shortcut_middle_drag": {"zh_CN": "中键拖动: 移动视图", "en_US": "Middle Click+Drag: Move View"},
+    "shortcut_middle_drag": {"zh_CN": "中键拖动: 移动视图", "en_US": "Middle Click+Drag: Pan View"},
     "shortcut_wheel": {"zh_CN": "滚轮: 缩放视图", "en_US": "Wheel: Zoom View"},
-    "shortcut_space": {"zh_CN": "空格: 重置视图", "en_US": "Space: Reset View"},
-    "shortcut_ctrl_z": {"zh_CN": "Ctrl+Z: 撤销", "en_US": "Ctrl+Z: Undo"},
-    "shortcut_ctrl_shift_z": {"zh_CN": "Ctrl+Shift+Z: 重做", "en_US": "Ctrl+Shift+Z: Redo"},
-    "shortcut_alt_horiz": {"zh_CN": "Alt+左右拖动: 调整笔刷大小", "en_US": "Alt+Horizontal Drag: Adjust Brush Size"},
-    "shortcut_alt_vert": {"zh_CN": "Alt+上下拖动: 调整流动强度", "en_US": "Alt+Vertical Drag: Adjust Flow Strength"},
+    "shortcut_space_f": {"zh_CN": "空格/F: 重置视图", "en_US": "Space/F: Reset View"},
+    "shortcut_s_drag": {"zh_CN": "S+拖动: 调整笔刷大小和强度", "en_US": "S+Drag: Adjust Brush Size and Strength"},
+    "shortcut_alt_rotate": {"zh_CN": "Alt+左键拖动: 旋转视图", "en_US": "Alt+Left Drag: Rotate View"},
     
     # 状态消息
     "ready": {"zh_CN": "就绪", "en_US": "Ready"},

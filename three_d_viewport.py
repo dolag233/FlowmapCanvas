@@ -102,8 +102,9 @@ class ThreeDViewport(QOpenGLWidget):
         self._repaint_timer.timeout.connect(self.update)
         # painting state
         self._is_painting = False
+        self._is_erasing = False
         self._last_hit_uv = None
-        self._alt_pressed = False
+        self._s_pressed = False
         self._is_adjusting = False
         self._adjust_origin = QPoint(0, 0)
         self._initial_brush_radius = 40.0
@@ -563,8 +564,8 @@ class ThreeDViewport(QOpenGLWidget):
     def mousePressEvent(self, event):
         self._last_mouse = event.pos()
         if event.button() == Qt.LeftButton:
-            if (event.modifiers() & Qt.ControlModifier) or not self.model_loaded:
-                # Ctrl+左键：旋转
+            if (event.modifiers() & Qt.AltModifier) or not self.model_loaded:
+                # Alt+左键：旋转
                 self._is_rotating = True
                 self._is_painting = False
                 self._hide_brush_cursor()
@@ -583,30 +584,25 @@ class ThreeDViewport(QOpenGLWidget):
                     self.paint_started.emit()
                     self._show_brush_cursor(event.pos())
         elif event.button() == Qt.MiddleButton:
-            if event.modifiers() & Qt.ControlModifier:
-                # Ctrl+中键：旋转
-                self._is_rotating = True
-                self._is_panning = False
-                self._is_zooming = False
-            elif event.modifiers() & Qt.AltModifier:
-                # Alt+中键：调整笔刷（与2D一致）
-                self._is_adjusting = True
-                self._adjust_origin = event.pos()
+            # 中键仅用于平移
+            self._is_panning = True
+        elif event.button() == Qt.RightButton:
+            # 右键：擦除（与2D一致）
+            hit_info = self._raycast_full_hit_info(event.pos())
+            if hit_info is not None:
+                self._is_painting = True
+                self._is_erasing = True
+                self._last_hit_uv = hit_info['uv']
+                self._last_hit_world_pos = hit_info['world_pos']
+                self._last_hit_triangle_idx = hit_info['triangle_idx']
+                self._last_hit_barycentric = hit_info['barycentric']
+                # 初始擦除点
+                self._invoke_canvas_erase(hit_info['uv'], hit_info['uv'])
                 try:
-                    self._initial_brush_radius = float(getattr(self._canvas, 'brush_radius', 40.0))
-                    self._initial_brush_strength = float(getattr(self._canvas, 'brush_strength', 0.5))
-                except Exception:
-                    self._initial_brush_radius = 40.0
-                    self._initial_brush_strength = 0.5
-                try:
-                    self._brush_cursor.set_adjusting_state(True)
+                    self.paint_started.emit()
                 except Exception:
                     pass
                 self._show_brush_cursor(event.pos())
-            else:
-                self._is_panning = True
-        elif event.button() == Qt.RightButton:
-            self._is_zooming = True
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
@@ -619,24 +615,37 @@ class ThreeDViewport(QOpenGLWidget):
                 self.paint_finished.emit()
                 self._hide_brush_cursor()
             self._is_rotating = False
+        elif event.button() == Qt.RightButton:
+            # 右键释放：停止擦除
+            if self._is_painting and self._is_erasing:
+                self._is_painting = False
+                self._is_erasing = False
+                try:
+                    self.paint_finished.emit()
+                except Exception:
+                    pass
+                self._hide_brush_cursor()
         elif event.button() == Qt.MiddleButton:
             self._is_panning = False
             self._is_rotating = False
-            if self._is_adjusting:
-                self._is_adjusting = False
+            # 中键不再用于S调整（仅平移）。S键分支已提前return。
+        elif event.button() == Qt.RightButton:
+            # 右键释放：停止擦除
+            if self._is_painting and self._is_erasing:
+                self._is_painting = False
+                self._is_erasing = False
                 try:
-                    self._brush_cursor.set_adjusting_state(False)
+                    self.paint_finished.emit()
                 except Exception:
                     pass
-        elif event.button() == Qt.RightButton:
-            self._is_zooming = False
+                self._hide_brush_cursor()
 
     def mouseMoveEvent(self, event):
         dx = event.x() - self._last_mouse.x()
         dy = event.y() - self._last_mouse.y()
         self._last_mouse = event.pos()
-        # Alt 调整优先级最高（与2D一致，不需要按键鼠标，只要Alt按下并移动即可）
-        if self._alt_pressed and self._is_adjusting:
+        # S键 调整优先级最高（与2D一致，不需要按键鼠标，只要S按下并移动即可）
+        if self._s_pressed and self._is_adjusting:
             dx = event.x() - self._adjust_origin.x()
             dy = event.y() - self._adjust_origin.y()
             if abs(dx) > abs(dy):
@@ -665,46 +674,34 @@ class ThreeDViewport(QOpenGLWidget):
             self.update()
             return
         # Ctrl+左键优先：旋转，不绘制
-        if (event.buttons() & Qt.LeftButton) and (event.modifiers() & Qt.ControlModifier):
-            self._is_rotating = True
-            self._is_painting = False
-            self._hide_brush_cursor()
+        # 移除Ctrl旋转逻辑（已使用Alt+左键）
         # Alt+中键：调整笔刷（与2D一致）
-        if self._is_adjusting and (event.buttons() & Qt.MiddleButton):
-            dx = event.x() - self._adjust_origin.x()
-            dy = event.y() - self._adjust_origin.y()
-            # 与2D一致：水平主导则调半径，垂直主导则调强度
-            if abs(dx) > abs(dy):
-                scale_factor = 0.1
-                new_radius = self._initial_brush_radius + dx * scale_factor
-                new_radius = max(5.0, min(200.0, float(new_radius)))
-                try:
-                    if hasattr(self, '_canvas'):
-                        self._canvas.brush_radius = new_radius
-                        # 更新3D光标半径
-                        self._brush_cursor.set_radius(int(new_radius))
-                        self._canvas.brush_properties_changed.emit(new_radius, float(getattr(self._canvas, 'brush_strength', 0.5)))
-                except Exception:
-                    pass
-            else:
-                scale_factor = 0.005
-                new_strength = self._initial_brush_strength - dy * scale_factor
-                new_strength = max(0.01, min(1.0, float(new_strength)))
-                try:
-                    if hasattr(self, '_canvas'):
-                        self._canvas.brush_strength = new_strength
-                        self._canvas.brush_properties_changed.emit(float(getattr(self._canvas, 'brush_radius', 40.0)), new_strength)
-                except Exception:
-                    pass
-            self._show_brush_cursor(event.pos())
-            self.update()
-            return
+        # 中键不再用于S调整（仅平移）。S键分支已提前return。
         if self._is_painting and (event.buttons() & Qt.LeftButton):
             # CPU无缝：根据世界空间移动方向映射到切线空间
             hit_info = self._raycast_full_hit_info(event.pos())
             if hit_info is not None and self._last_hit_world_pos is not None:
                 world_direction = hit_info['world_pos'] - self._last_hit_world_pos
                 self._invoke_canvas_brush_tangent_dir(hit_info, world_direction)
+                # 更新状态
+                self._last_hit_uv = hit_info['uv']
+                self._last_hit_world_pos = hit_info['world_pos']
+                self._last_hit_triangle_idx = hit_info['triangle_idx']
+                self._last_hit_barycentric = hit_info['barycentric']
+                self._show_brush_cursor(event.pos())
+                try:
+                    if hasattr(self._canvas, 'update'):
+                        self._canvas.update()
+                except Exception:
+                    pass
+                self.update()
+            return
+        if self._is_painting and self._is_erasing and (event.buttons() & Qt.RightButton):
+            # 右键擦除拖动
+            hit_info = self._raycast_full_hit_info(event.pos())
+            if hit_info is not None:
+                last_uv = self._last_hit_uv if self._last_hit_uv is not None else hit_info['uv']
+                self._invoke_canvas_erase(last_uv, hit_info['uv'])
                 # 更新状态
                 self._last_hit_uv = hit_info['uv']
                 self._last_hit_world_pos = hit_info['world_pos']
@@ -756,13 +753,24 @@ class ThreeDViewport(QOpenGLWidget):
         self.update()
 
     def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Alt:
-            self._alt_pressed = True
+        if event.key() == Qt.Key_S:
+            self._s_pressed = True
             # 锚定调整起点（与2D一致）
             pos = self.mapFromGlobal(QCursor.pos())
             if not self.rect().contains(pos):
                 pos = QPoint(self.width() // 2, self.height() // 2)
             self._adjust_origin = pos
+        elif event.key() == Qt.Key_Space or event.key() == Qt.Key_F:
+            # Space或F键重置3D视图
+            self._cam_distance = 3.0
+            self._cam_yaw = 0.0
+            self._cam_pitch = 0.0
+            self._cam_target = np.array([0.0, 0.0, 0.0], dtype=np.float32)
+            self.update()
+            return
+            
+        # S键的其余处理
+        if event.key() == Qt.Key_S:
             try:
                 self._initial_brush_radius = float(getattr(self._canvas, 'brush_radius', 40.0))
                 self._initial_brush_strength = float(getattr(self._canvas, 'brush_strength', 0.5))
@@ -779,8 +787,8 @@ class ThreeDViewport(QOpenGLWidget):
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event):
-        if event.key() == Qt.Key_Alt:
-            self._alt_pressed = False
+        if event.key() == Qt.Key_S:
+            self._s_pressed = False
             self._is_adjusting = False
             try:
                 self._brush_cursor.set_adjusting_state(False)
@@ -858,6 +866,36 @@ class ThreeDViewport(QOpenGLWidget):
             self._canvas.update()
         except Exception as e:
             print(f"invoke_canvas_brush error: {e}")
+
+    def _invoke_canvas_erase(self, last_uv, curr_uv):
+        """在3D视口中擦除，直接调用2D画布的擦除功能"""
+        if not hasattr(self, '_canvas') or self._canvas is None:
+            return
+        try:
+            # 将UV转换成 2D画布的 scene 坐标
+            last_scene = QPointF(float(last_uv[0]), float(last_uv[1]))
+            curr_scene = QPointF(float(curr_uv[0]), float(curr_uv[1]))
+            last_widget = self._canvas.mapFromScene(last_scene)
+            curr_widget = self._canvas.mapFromScene(curr_scene)
+            
+            # 设置2D擦除状态并调用
+            prev_state = (self._canvas.is_erasing, self._canvas.mouse_state)
+            try:
+                self._canvas.is_erasing = True
+            except Exception:
+                pass
+            try:
+                # 使用路径式调用，获得连续擦除效果
+                self._canvas.apply_brush(last_widget, curr_widget)
+            finally:
+                # 恢复状态
+                try:
+                    self._canvas.is_erasing = prev_state[0]
+                except Exception:
+                    pass
+            self._canvas.update()
+        except Exception as e:
+            print(f"invoke_canvas_erase error: {e}")
 
     def _invoke_canvas_brush_tangent_dir(self, hit_info, world_direction):
         """在CPU上将世界方向映射到切线空间，编码为flow，再在2D画布上以UV路径调用笔刷。
@@ -1269,7 +1307,7 @@ class ThreeDViewport(QOpenGLWidget):
                 self._canvas.brush_cursor.show()
             # 防止卡住：离开时强制退出调整/旋转/绘制状态
             self._is_adjusting = False
-            self._alt_pressed = False
+            self._s_pressed = False
             self._is_rotating = False
             if self._is_painting:
                 self._is_painting = False
@@ -1289,7 +1327,7 @@ class ThreeDViewport(QOpenGLWidget):
         try:
             # 失去焦点同样清理调整/绘制状态，避免Alt卡死
             self._is_adjusting = False
-            self._alt_pressed = False
+            self._s_pressed = False
             self._is_rotating = False
             if self._is_painting:
                 self._is_painting = False

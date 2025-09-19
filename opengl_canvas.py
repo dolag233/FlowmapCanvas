@@ -117,10 +117,10 @@ class FlowmapCanvas(QOpenGLWidget):
 
         # Shift键状态 - 用于模糊效果
         self.shift_pressed = False
-        self.alt_pressed = False  # Alt键状态
-        self.alt_press_position = None  # Alt键按下时的位置
-        self.initial_brush_radius = 40.0  # 按下Alt键时的初始笔刷半径
-        self.initial_brush_strength = 0.5  # 按下Alt键时的初始笔刷强度
+        self.s_pressed = False  # S键状态（用于笔刷调整）
+        self.s_press_position = None  # S键按下时的位置
+        self.initial_brush_radius = 40.0  # 按下S键时的初始笔刷半径
+        self.initial_brush_strength = 0.5  # 按下S键时的初始笔刷强度
 
         # 绘制优化参数
         self.last_draw_time = 0  # 上次绘制时间
@@ -658,7 +658,7 @@ class FlowmapCanvas(QOpenGLWidget):
         r_win = float(win_w) / float(win_h)
 
         if r_win > r_tex:
-            # widget 更宽：应左右裁剪，但我们在screen->content中需要把“裁剪轴”的scale放在Y以避免XY反置
+            # widget 更宽：应左右裁剪，但我们在screen->content中需要把"裁剪轴"的scale放在Y以避免XY反置
             self.aspect_scale_x = 1.0
             self.aspect_scale_y = r_win / r_tex
             self.aspect_offset_x = 0.0
@@ -707,8 +707,8 @@ class FlowmapCanvas(QOpenGLWidget):
 
     def keyPressEvent(self, event):
         """处理键盘事件"""
-        if event.key() == Qt.Key_Space:
-            # 空格键重置视图到中心
+        if event.key() == Qt.Key_Space or event.key() == Qt.Key_F:
+            # 空格键或F键重置视图到中心
             self.target_main_view_scale = 1.0
             self.target_main_view_offset = QPointF(0.0, 0.0)
             self.scale_animation_active = True
@@ -717,25 +717,25 @@ class FlowmapCanvas(QOpenGLWidget):
         elif event.key() == Qt.Key_Shift:
             # 按下Shift键时激活模糊模式
             self.shift_pressed = True
-        elif event.key() == Qt.Key_Alt:
-            # 按下Alt键，标记为控制模式
-            self.alt_pressed = True
+        elif event.key() == Qt.Key_S:
+            # 按下S键，标记为笔刷调整模式
+            self.s_pressed = True
             
-            # 始终使用当前鼠标位置作为Alt键按下时的位置
+            # 始终使用当前鼠标位置作为S键按下时的位置
             cursor_pos = self.mapFromGlobal(QCursor.pos())
             # 确保位置在widget内
             if self.rect().contains(cursor_pos):
-                self.alt_press_position = cursor_pos
+                self.s_press_position = cursor_pos
             else:
                 # 如果鼠标不在widget内，使用widget中心作为默认位置
-                self.alt_press_position = QPoint(self.width() // 2, self.height() // 2)
+                self.s_press_position = QPoint(self.width() // 2, self.height() // 2)
 
             # 保存当前笔刷参数作为初始值
             self.initial_brush_radius = self.brush_radius
             self.initial_brush_strength = self.brush_strength
 
             # 发送鼠标位置信号以更新笔刷预览位置
-            self.mouse_moved.emit(self.alt_press_position)
+            self.mouse_moved.emit(self.s_press_position)
         else:
             super().keyPressEvent(event)
 
@@ -744,18 +744,18 @@ class FlowmapCanvas(QOpenGLWidget):
         if event.key() == Qt.Key_Shift:
             # 释放Shift键时关闭模糊模式
             self.shift_pressed = False
-        elif event.key() == Qt.Key_Alt:
-            # 释放Alt键
-            self.alt_pressed = False
-            self.alt_press_position = None  # 清除Alt键按下时的位置
+        elif event.key() == Qt.Key_S:
+            # 释放S键
+            self.s_pressed = False
+            self.s_press_position = None  # 清除S键按下时的位置
         else:
             super().keyReleaseEvent(event)
 
     def leaveEvent(self, event):
-        """当鼠标离开画布时，强制退出Alt调整模式，防止状态卡住"""
+        """当鼠标离开画布时，强制退出S键调整模式，防止状态卡住"""
         try:
-            self.alt_pressed = False
-            self.alt_press_position = None
+            self.s_pressed = False
+            self.s_press_position = None
             # 离开时若正在绘制，结束绘制，防止漂移
             if self.mouse_state == MouseState.DRAWING or self.mouse_state == MouseState.ERASING:
                 self.mouse_state = MouseState.IDLE
@@ -775,10 +775,10 @@ class FlowmapCanvas(QOpenGLWidget):
         return super().leaveEvent(event)
 
     def focusOutEvent(self, event):
-        """当画布失去焦点时，强制退出Alt调整模式，防止状态卡住"""
+        """当画布失去焦点时，强制退出S键调整模式，防止状态卡住"""
         try:
-            self.alt_pressed = False
-            self.alt_press_position = None
+            self.s_pressed = False
+            self.s_press_position = None
         except Exception:
             pass
         return super().focusOutEvent(event)
@@ -833,13 +833,13 @@ class FlowmapCanvas(QOpenGLWidget):
             # 在鼠标按下时不发出flowmap_updated信号，只在释放时发出
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        # 处理Alt键+鼠标移动的快捷键功能 - 优先级最高
-        if self.alt_pressed and self.alt_press_position:
+        # 处理S键+鼠标移动的快捷键功能 - 优先级最高
+        if self.s_pressed and self.s_press_position:
             current_pos = event.pos()
 
-            # 计算与Alt键按下位置的差值
-            delta_x = current_pos.x() - self.alt_press_position.x()
-            delta_y = current_pos.y() - self.alt_press_position.y()
+            # 计算与S键按下位置的差值
+            delta_x = current_pos.x() - self.s_press_position.x()
+            delta_y = current_pos.y() - self.s_press_position.y()
 
             # 判断移动距离更大的方向，并只应用对应参数的变化
             if abs(delta_x) > abs(delta_y):
@@ -862,7 +862,7 @@ class FlowmapCanvas(QOpenGLWidget):
             self.brush_properties_changed.emit(self.brush_radius, self.brush_strength)
 
             # 无论调整哪个参数，发送鼠标位置信号保持笔刷预览在原位
-            self.mouse_moved.emit(self.alt_press_position)  # 使用 Alt 按下时的位置而不是 last_pos
+            self.mouse_moved.emit(self.s_press_position)  # 使用 S 按下时的位置而不是 last_pos
 
             self.update()
             return
@@ -901,15 +901,16 @@ class FlowmapCanvas(QOpenGLWidget):
             return
 
         # 发送鼠标移动信号，用于更新画笔预览
-        pos = QPoint(event.pos().x(), event.pos().y())
-        self.mouse_moved.emit(pos)
+        if not self.s_pressed:
+            pos = QPoint(event.pos().x(), event.pos().y())
+            self.mouse_moved.emit(pos)
 
         # 始终将鼠标位置传递给预览
         scene_pos = self.mapToScene(event.pos())
         self.mouseMoveNonDrawing.emit(scene_pos)
 
-        # 如果正在绘制且没有按下Alt键，则应用笔刷
-        if not self.alt_pressed and (self.mouse_state == MouseState.DRAWING or self.mouse_state == MouseState.ERASING) and \
+        # 如果正在绘制且没有按下S键，则应用笔刷
+        if not self.s_pressed and (self.mouse_state == MouseState.DRAWING or self.mouse_state == MouseState.ERASING) and \
            ((event.buttons() & Qt.LeftButton) or (event.buttons() & Qt.RightButton)):
             current_pos = event.pos()
 

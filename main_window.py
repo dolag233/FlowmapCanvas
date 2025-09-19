@@ -326,6 +326,9 @@ class MainWindow(QMainWindow):
             if uv_group:
                 uv_group.setVisible(True)
             self.canvas_widget.uv_wire_enabled = True
+            # 切换到3D快捷键显示
+            if hasattr(self.panel_manager, '_update_shortcut_display'):
+                self.panel_manager._update_shortcut_display(True)
             # 聚焦3D（不在此处全局隐藏2D笔刷，交给enter/leave事件控制）
             try:
                 self._three_d_widget.setFocus()
@@ -339,6 +342,9 @@ class MainWindow(QMainWindow):
             if uv_group:
                 uv_group.setVisible(False)
             self.canvas_widget.uv_wire_enabled = False
+            # 切换回2D快捷键显示
+            if hasattr(self.panel_manager, '_update_shortcut_display'):
+                self.panel_manager._update_shortcut_display(False)
             # 显示2D笔刷，隐藏3D笔刷
             try:
                 if hasattr(self, 'brush_cursor') and self.brush_cursor:
@@ -1545,13 +1551,13 @@ class MainWindow(QMainWindow):
             label.setStyleSheet(f"color: {shortcut_color};")
 
     def eventFilter(self, obj, event):
-        """过滤事件以捕获Alt键状态"""
+        """过滤事件以捕获S键状态"""
         if obj == self.canvas_widget:
             # 处理键盘事件
-            if event.type() == event.KeyPress and event.key() == Qt.Key_Alt:
+            if event.type() == event.KeyPress and event.key() == Qt.Key_S:
                 if hasattr(self, 'brush_cursor'):
                     self.brush_cursor.set_adjusting_state(True)
-            elif event.type() == event.KeyRelease and event.key() == Qt.Key_Alt:
+            elif event.type() == event.KeyRelease and event.key() == Qt.Key_S:
                 if hasattr(self, 'brush_cursor'):
                     self.brush_cursor.set_adjusting_state(False)
                     

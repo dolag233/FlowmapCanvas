@@ -523,35 +523,68 @@ class PanelManager:
 
     def _create_shortcut_group(self, parent_layout):
         """创建快捷键信息组"""
-        shortcut_group = QGroupBox(translator.tr("shortcuts"))
-        shortcut_layout = QVBoxLayout()
+        self.shortcut_group = QGroupBox(translator.tr("shortcuts_2d"))
+        self.shortcut_layout = QVBoxLayout()
         
-        # 创建快捷键标签
-        shortcuts_text = [
+        # 创建2D快捷键标签
+        self.shortcuts_2d_text = [
             translator.tr("shortcut_left_click"),
             translator.tr("shortcut_right_click"),
             translator.tr("shortcut_middle_drag"),
             translator.tr("shortcut_wheel"),
-            translator.tr("shortcut_space"),
-            translator.tr("shortcut_ctrl_z"),
-            translator.tr("shortcut_ctrl_shift_z"),
-            translator.tr("shortcut_alt_horiz"),
-            translator.tr("shortcut_alt_vert")
+            translator.tr("shortcut_space_f"),
+            translator.tr("shortcut_s_drag")
         ]
         
-        # 创建快捷键标签
-        shortcut_labels = []
-        for text in shortcuts_text:
-            label = QLabel(text)
-            shortcut_labels.append(label)
-            shortcut_layout.addWidget(label)
-            
-        shortcut_group.setLayout(shortcut_layout)
+        # 创建3D快捷键标签
+        self.shortcuts_3d_text = [
+            translator.tr("shortcut_left_click"),
+            translator.tr("shortcut_right_click"),
+            translator.tr("shortcut_middle_drag"),
+            translator.tr("shortcut_wheel"),
+            translator.tr("shortcut_space_f"),
+            translator.tr("shortcut_s_drag"),
+            translator.tr("shortcut_alt_rotate")
+        ]
+        
+        self.shortcut_labels = []
+        
+        # 设置layout到group，然后再更新显示
+        self.shortcut_group.setLayout(self.shortcut_layout)
+        
+        # 默认显示2D快捷键
+        self._update_shortcut_display(False)
         
         # 存储控件引用
-        self.controls["shortcut_labels"] = shortcut_labels
+        self.controls["shortcut_labels"] = self.shortcut_labels
+        self.controls["shortcut_group"] = self.shortcut_group
         
-        parent_layout.addWidget(shortcut_group)
+        parent_layout.addWidget(self.shortcut_group)
+    
+    def _update_shortcut_display(self, is_3d_mode):
+        """更新快捷键显示，根据2D/3D模式切换"""
+        # 清除现有标签
+        for label in self.shortcut_labels:
+            label.deleteLater()
+        self.shortcut_labels.clear()
+        
+        # 更新组标题
+        if is_3d_mode:
+            self.shortcut_group.setTitle(translator.tr("shortcuts_3d"))
+            shortcuts_text = self.shortcuts_3d_text
+        else:
+            self.shortcut_group.setTitle(translator.tr("shortcuts_2d"))
+            shortcuts_text = self.shortcuts_2d_text
+        
+        # 创建新的快捷键标签
+        for text in shortcuts_text:
+            label = QLabel(text)
+            label.setStyleSheet("color: #999999; font-size: 11px;")
+            self.shortcut_labels.append(label)
+            self.shortcut_layout.addWidget(label)
+        
+        # 更新控件引用
+        self.controls["shortcut_labels"] = self.shortcut_labels
         
     def get_control(self, name):
         """获取指定名称的控件"""
