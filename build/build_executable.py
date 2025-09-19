@@ -38,6 +38,28 @@ def copy_resources(dist_dir, project_root):
             print(f"已复制资源文件: {source_path} -> {target_path}")
         else:
             print(f"警告: 找不到资源文件 {source_path}")
+    
+    # 复制themes目录
+    themes_source = os.path.join(project_root, "themes")
+    if os.path.exists(themes_source):
+        themes_target = os.path.join(dist_dir, "themes")
+        if os.path.exists(themes_target):
+            shutil.rmtree(themes_target)
+        shutil.copytree(themes_source, themes_target)
+        print(f"已复制themes目录: {themes_source} -> {themes_target}")
+    else:
+        print("警告: 找不到themes目录")
+    
+    # 复制fonts目录
+    fonts_source = os.path.join(project_root, "fonts")
+    if os.path.exists(fonts_source):
+        fonts_target = os.path.join(dist_dir, "fonts")
+        if os.path.exists(fonts_target):
+            shutil.rmtree(fonts_target)
+        shutil.copytree(fonts_source, fonts_target)
+        print(f"已复制fonts目录: {fonts_source} -> {fonts_target}")
+    else:
+        print("警告: 找不到fonts目录")
 
 def find_fbx2gltf(project_root):
     """在常见位置寻找 FBX2glTF 可执行文件。
@@ -231,6 +253,22 @@ def main():
             print(f"添加数据文件: {file_path} -> {data_file}")
         else:
             print(f"警告: 找不到数据文件 {file_path}")
+    
+    # 添加themes目录
+    themes_dir = os.path.join(project_root, "themes")
+    if os.path.exists(themes_dir):
+        cmd.extend(["--add-data", f"{themes_dir}{sep}themes"])
+        print(f"添加themes目录: {themes_dir} -> themes")
+    else:
+        print("警告: 找不到themes目录")
+    
+    # 添加fonts目录
+    fonts_dir = os.path.join(project_root, "fonts")
+    if os.path.exists(fonts_dir):
+        cmd.extend(["--add-data", f"{fonts_dir}{sep}fonts"])
+        print(f"添加fonts目录: {fonts_dir} -> fonts")
+    else:
+        print("警告: 找不到fonts目录")
     
     # 添加主脚本 - 使用绝对路径
     main_script_path = os.path.join(project_root, main_script)

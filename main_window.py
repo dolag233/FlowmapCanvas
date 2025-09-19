@@ -1386,6 +1386,60 @@ class MainWindow(QMainWindow):
         
         print(f"窗口初始化为 {window_width}x{window_height}，图像比例: {image_aspect_ratio:.2f}")
     
+    def _load_font(self):
+        """加载字体：优先在fonts目录下搜索ttf/otf文件"""
+        try:
+            from PyQt5.QtGui import QFontDatabase, QFont
+            from PyQt5.QtWidgets import QApplication
+            
+            font_loaded = False
+            
+            # 首先在fonts目录下搜索所有字体文件
+            fonts_dir = "fonts"
+            if os.path.exists(fonts_dir):
+                try:
+                    for filename in os.listdir(fonts_dir):
+                        if filename.lower().endswith(('.ttf', '.otf')):
+                            font_path = os.path.join(fonts_dir, filename)
+                            font_id = QFontDatabase.addApplicationFont(font_path)
+                            if font_id != -1:
+                                font_families = QFontDatabase.applicationFontFamilies(font_id)
+                                if font_families:
+                                    app = QApplication.instance()
+                                    if app:
+                                        # 设置全局字体
+                                        font = QFont(font_families[0], 9)  # 9pt 大小
+                                        app.setFont(font)
+                                        print(f"已从fonts目录加载字体: {filename} ({font_families[0]})")
+                                        font_loaded = True
+                                        break
+                except Exception as e:
+                    print(f"搜索fonts目录失败: {e}")
+            
+            # 如果fonts目录没有找到字体，尝试根目录的OPPOSans-H.ttf
+            if not font_loaded:
+                fallback_paths = ["OPPOSans-H.ttf"]
+                for font_path in fallback_paths:
+                    if os.path.exists(font_path):
+                        font_id = QFontDatabase.addApplicationFont(font_path)
+                        if font_id != -1:
+                            font_families = QFontDatabase.applicationFontFamilies(font_id)
+                            if font_families:
+                                app = QApplication.instance()
+                                if app:
+                                    # 设置全局字体
+                                    font = QFont(font_families[0], 9)  # 9pt 大小
+                                    app.setFont(font)
+                                    print(f"已从根目录加载字体: {font_path} ({font_families[0]})")
+                                    font_loaded = True
+                                    break
+            
+            if not font_loaded:
+                print("未找到字体文件，使用系统默认字体")
+                
+        except Exception as e:
+            print(f"字体加载失败: {e}")
+    
     # 保留早先的 resizeEvent 定义（文件前部已有），此处不再重载，避免冲突
 
     def _setup_canvas_container(self):
@@ -1442,13 +1496,52 @@ class MainWindow(QMainWindow):
             print(f"_update_canvas_layout error: {e}")
 
     def apply_modern_style(self):
-        """应用现代化样式"""
+        """应用现代化样式：Dracula主题 + OPPO Sans字体"""
+        # 1) 加载OPPO Sans字体
+        self._load_font()
+        
+        # 2) 应用Dracula主题（根据深浅模式选择）
+        try:
+            if app_settings.is_dark_mode:
+                dracula_path = "themes/dracula.qss"
+                shortcut_color = '#6272a4'  # Dracula comment color
+                theme_name = "Dracula 深色"
+            else:
+                dracula_path = "themes/dracula-light.qss"
+                shortcut_color = '#6272a4'  # 保持一致的注释色
+                theme_name = "Dracula 浅色"
+                
+            if os.path.exists(dracula_path):
+                with open(dracula_path, "r", encoding="utf-8") as f:
+                    dracula_qss = f.read()
+                self.setStyleSheet(dracula_qss)
+                for label in self.panel_manager.get_shortcut_labels():
+                    label.setStyleSheet(f"color: {shortcut_color};")
+                print(f"已应用 {theme_name} 主题")
+                return
+        except Exception as e:
+            print(f"Dracula 主题加载失败: {e}")
+        
+        # 回退：QDarkStyle
+        try:
+            import qdarkstyle
+            if app_settings.is_dark_mode:
+                self.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5'))
+                shortcut_color = '#888888'
+            else:
+                self.setStyleSheet(qdarkstyle.load_stylesheet(qt_api='pyqt5', palette=qdarkstyle.LightPalette))
+                shortcut_color = '#666666'
+            
+            for label in self.panel_manager.get_shortcut_labels():
+                label.setStyleSheet(f"color: {shortcut_color};")
+            return
+        except Exception:
+            pass
+
+        # 最终回退：内置QSS
         qss, shortcut_color = app_settings.get_theme_stylesheet()
         self.setStyleSheet(qss)
-        
-        # 设置快捷键标签为浅色
-        shortcut_labels = self.panel_manager.get_shortcut_labels()
-        for label in shortcut_labels:
+        for label in self.panel_manager.get_shortcut_labels():
             label.setStyleSheet(f"color: {shortcut_color};")
 
     def eventFilter(self, obj, event):
