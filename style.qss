@@ -23,6 +23,50 @@ QScrollBar:vertical {
     width: 12px;
 }
 
+/* 参数面板滚动区域样式 */
+QScrollArea {
+    border: none;
+    background-color: transparent;
+}
+
+QScrollArea QScrollBar:vertical {
+    background: #353535;
+    width: 10px;
+    border-radius: 5px;
+    margin: 0px;
+}
+
+QScrollArea QScrollBar::handle:vertical {
+    background: #5E5E5E;
+    border-radius: 5px;
+    min-height: 20px;
+    margin: 1px;
+}
+
+QScrollArea QScrollBar::handle:vertical:hover {
+    background: #6E6E6E;
+}
+
+QScrollArea QScrollBar::handle:vertical:pressed {
+    background: #4E4E4E;
+}
+
+QScrollArea QScrollBar::add-line:vertical,
+QScrollArea QScrollBar::sub-line:vertical {
+    height: 0px;
+    width: 0px;
+    background: none;
+}
+
+QScrollArea QScrollBar::add-page:vertical,
+QScrollArea QScrollBar::sub-page:vertical {
+    background: transparent;
+}
+
+QScrollArea QScrollBar::corner {
+    background: transparent;
+}
+
 QStatusBar {
     background-color: #353535;
     color: #A0A0A0;

@@ -4,7 +4,7 @@
 
 from PyQt5.QtWidgets import (
     QDockWidget, QVBoxLayout, QHBoxLayout, QWidget, QLabel,
-    QSlider, QGroupBox, QCheckBox, QPushButton, QComboBox
+    QSlider, QGroupBox, QCheckBox, QPushButton, QComboBox, QScrollArea
 )
 from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QFont
@@ -29,6 +29,16 @@ class PanelManager:
         """创建参数面板"""
         param_dock = QDockWidget('', self.main_window)  # 移除标题
         param_dock.setFeatures(QDockWidget.NoDockWidgetFeatures)  # 禁止折叠和移动
+        
+        # 创建滚动区域
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)  # 允许内容自动调整大小
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # 禁用水平滚动条
+        scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)  # 需要时显示垂直滚动条
+        scroll_area.setFrameStyle(0)  # 移除边框，使其更美观
+        # 滚动条样式现在统一在 style.qss 中管理
+        
+        # 创建内容widget
         param_widget = QWidget()
         layout = QVBoxLayout()
         layout.setContentsMargins(10, 10, 10, 10)
@@ -46,7 +56,12 @@ class PanelManager:
         self._create_shortcut_group(layout)
 
         param_widget.setLayout(layout)
-        param_dock.setWidget(param_widget)
+        
+        # 将内容widget放入滚动区域
+        scroll_area.setWidget(param_widget)
+        
+        # 将滚动区域设置为dock的widget
+        param_dock.setWidget(scroll_area)
         self.main_window.addDockWidget(Qt.LeftDockWidgetArea, param_dock)
         
         self.dock_widgets["parameter_panel"] = param_dock
