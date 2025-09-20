@@ -944,7 +944,8 @@ class FlowmapCanvas(QOpenGLWidget):
 
             if time_since_last_draw >= self.draw_throttle_ms:
                 # 时间间隔足够，执行绘制
-                self.apply_brush(self.last_pos, current_pos)
+                # 使用插值算法填充跳过的点，避免快速绘制时出现断点
+                self.apply_brush_with_interpolation(self.last_pos, current_pos)
                 self.last_pos = current_pos
                 self.last_draw_time = current_time
 
@@ -978,7 +979,7 @@ class FlowmapCanvas(QOpenGLWidget):
         current_pos = self.accumulated_positions[-1]
 
         # 执行绘制
-        self.apply_brush(self.last_pos, current_pos)
+        self.apply_brush_with_interpolation(self.last_pos, current_pos)
         self.last_pos = current_pos
         self.last_draw_time = time.time() * 1000
 
@@ -1067,7 +1068,7 @@ class FlowmapCanvas(QOpenGLWidget):
         elif event.type() == QTabletEvent.TabletMove:
             # 数位板移动，继续绘制
             if self.is_drawing:
-                self.apply_brush(self.last_pos, event.pos())
+                self.apply_brush_with_interpolation(self.last_pos, event.pos())
                 self.last_pos = event.pos()
                 self.update()
                 
@@ -1100,6 +1101,49 @@ class FlowmapCanvas(QOpenGLWidget):
             strength_range = 1.0 - self.pressure_strength_min
             strength_factor = self.pressure_strength_min + strength_range * self.current_pressure
             self.brush_strength = self.base_brush_strength * strength_factor
+
+    def apply_brush_with_interpolation(self, last_widget_pos, current_widget_pos, explicit_flow_dir=None):
+        """
+        带插值的笔刷绘制，解决快速绘制时出现断点的问题
+        在两个点之间进行线性插值，确保绘制的连续性
+        """
+        # 计算两点间的距离
+        dx = current_widget_pos.x() - last_widget_pos.x()
+        dy = current_widget_pos.y() - last_widget_pos.y()
+        distance = np.sqrt(dx*dx + dy*dy)
+        
+        # 根据笔刷半径确定插值步长
+        # 步长约为笔刷半径的一半，确保有足够的重叠
+        step_size = max(1.0, self.brush_radius * 0.5)
+        
+        # 如果距离小于步长，直接绘制
+        if distance <= step_size:
+            self.apply_brush(last_widget_pos, current_widget_pos, explicit_flow_dir)
+            return
+        
+        # 计算需要插值的点数
+        num_steps = int(np.ceil(distance / step_size))
+        
+        # 进行线性插值绘制
+        for i in range(num_steps + 1):
+            t = i / num_steps if num_steps > 0 else 0
+            
+            # 线性插值计算当前点
+            interp_x = last_widget_pos.x() + dx * t
+            interp_y = last_widget_pos.y() + dy * t
+            interp_pos = QPoint(int(interp_x), int(interp_y))
+            
+            # 为每个插值点计算前一个点（用于流向计算）
+            if i == 0:
+                prev_pos = last_widget_pos
+            else:
+                prev_t = (i - 1) / num_steps if num_steps > 0 else 0
+                prev_x = last_widget_pos.x() + dx * prev_t
+                prev_y = last_widget_pos.y() + dy * prev_t
+                prev_pos = QPoint(int(prev_x), int(prev_y))
+            
+            # 绘制插值点
+            self.apply_brush(prev_pos, interp_pos, explicit_flow_dir)
 
     def apply_brush(self, last_widget_pos, current_widget_pos, explicit_flow_dir=None):
         """
