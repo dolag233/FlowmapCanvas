@@ -47,6 +47,7 @@ void main(){
   vec2 uv = vUV;
   if (u_hasBaseMap) {
     vec2 flowDir = texture(flowMap, uv).rg * 2.0 - 1.0;
+    flowDir.x = -flowDir.x;  // 默认反转R通道
     if (u_useDirectX >= 1.0) flowDir.y *= -1.0;
     float phaseTime = u_time * u_flowSpeed;
     float phase0 = fract(phaseTime);

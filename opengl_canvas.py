@@ -1150,9 +1150,9 @@ class FlowmapCanvas(QOpenGLWidget):
         # 计算流向向量
         if explicit_flow_dir is not None:
             # 使用3D无缝绘制提供的显式flow方向（已经在切线空间中正确编码）
-            # 应用与2D相同的符号约定：负号保持直观性
-            flow_x = -explicit_flow_dir[0] * 100.0  # 负号保持与2D一致的直观性
-            flow_y = -explicit_flow_dir[1] * 100.0  # 负号保持与2D一致的直观性
+            # 修改：与2D新的符号约定保持一致（向右为正）
+            flow_x = explicit_flow_dir[0] * 100.0   # 向右移动表示材质向右流动
+            flow_y = -explicit_flow_dir[1] * 100.0  # Y轴保持原有的负号约定
         else:
             # 传统方式：基于两点间的差值计算
             delta_x_scene = current_pos_scene.x() - last_pos_scene.x()
@@ -1168,7 +1168,7 @@ class FlowmapCanvas(QOpenGLWidget):
                     delta_y_scene = -np.sign(delta_y_scene) * (1.0 - abs(delta_y_scene))
 
             # 计算流向在纹理空间的大小
-            flow_x = -delta_x_scene * tex_w  # 负号是为了保持直观性：向右移动表示材质向左流动
+            flow_x = delta_x_scene * tex_w   # 修改：向右移动表示材质向右流动（默认反转R通道）
             flow_y = -delta_y_scene * tex_h  # 修改：使用负号确保 Y 轴方向一致
 
         # 测试输出当前位置和转换后的纹理坐标，用于调试

@@ -65,7 +65,9 @@ void main()
         if(inRange){
             // 获取流向向量 - 直接从纹理中读取RG值并转换为[-1,1]范围
             // 注意：Y值已经在CPU中根据当前API模式做了反转处理
+            // 默认反转R通道：R通道从[0,1]转换为[1,-1]范围
             vec2 flowDir = texture(flowMap, sampleCoords).rg * 2.0 - 1.0;
+            flowDir.x = -flowDir.x;
             if(u_useDirectX >= 1)
                 flowDir.y *= -1;
 
