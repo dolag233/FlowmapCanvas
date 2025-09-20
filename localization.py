@@ -44,7 +44,7 @@ TRANSLATIONS = {
     "brush_parameters": {"zh_CN": "笔刷参数", "en_US": "Brush Parameters"},
     "brush_size": {"zh_CN": "笔刷大小", "en_US": "Brush Size"},
     "flow_strength": {"zh_CN": "流动强度", "en_US": "Flow Strength"},
-    "speed_sensitivity": {"zh_CN": "速度灵敏度", "en_US": "Speed Sensitivity"},
+    "speed_sensitivity": {"zh_CN": "压感灵敏度", "en_US": "Pressure Sensitivity"},
     
     # 模式设置组
     "mode_settings": {"zh_CN": "模式设置", "en_US": "Mode Settings"},
@@ -90,7 +90,7 @@ TRANSLATIONS = {
     "seamless_status": {"zh_CN": "四方连续贴图已切换为: {status}", "en_US": "Seamless Tiling: {status}"},
     "enabled": {"zh_CN": "启用", "en_US": "Enabled"},
     "disabled": {"zh_CN": "禁用", "en_US": "Disabled"},
-    "sensitivity_changed": {"zh_CN": "速度灵敏度已调整为: {value:.2f}", "en_US": "Speed sensitivity set to: {value:.2f}"},
+    "sensitivity_changed": {"zh_CN": "压感灵敏度已调整为: {value:.2f}", "en_US": "Pressure sensitivity set to: {value:.2f}"},
     "preview_mode": {"zh_CN": "预览重复模式: {status}", "en_US": "Preview Repeat Mode: {status}"},
     "fill_color_set": {"zh_CN": "填充颜色已设置为: ({r}, {g})", "en_US": "Fill Color Set to: ({r}, {g})"},
     "canvas_filled": {"zh_CN": "已用颜色 ({r}, {g}) 填充画布", "en_US": "Canvas Filled with Color ({r}, {g})"},

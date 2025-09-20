@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QOpenGLWidget, QMessageBox, QMainWindow
 from PyQt5.QtCore import Qt, QPoint, QSize, pyqtSignal, QTimer, QPointF, QSizeF
-from PyQt5.QtGui import QMouseEvent, QImage, QVector2D, QCursor
+from PyQt5.QtGui import QMouseEvent, QTabletEvent, QImage, QVector2D, QCursor
 from OpenGL.GL import *
 from OpenGL.GL import shaders
 from OpenGL.error import GLError
@@ -107,6 +107,18 @@ class FlowmapCanvas(QOpenGLWidget):
         self.brush_radius = 40.0 # 笔刷半径 (像素)
         self.brush_strength = 0.5 # 笔刷强度 [0, 1]
         self.speed_sensitivity = 0.7  # 鼠标速度灵敏度 [0, 1]
+        
+        # 数位板笔压相关属性
+        self.current_pressure = 1.0  # 当前笔压 [0, 1]
+        self.pressure_affects_size = True  # 笔压是否影响笔刷大小
+        self.pressure_affects_strength = True  # 笔压是否影响笔刷强度
+        self.base_brush_radius = 40.0  # 基础笔刷半径（无压感时）
+        self.base_brush_strength = 0.5  # 基础笔刷强度（无压感时）
+        self.is_tablet_input = False  # 标记当前是否为数位板输入
+        
+        # 笔压响应参数（可配置）
+        self.pressure_size_min = 0.2  # 大小最小值（基础大小的百分比）
+        self.pressure_strength_min = 0.2  # 强度最小值（基础强度的百分比）
         self.graphics_api_mode = "opengl"  # 默认使用OpenGL模式 - 'opengl'或'directx'
         self.enable_seamless = False  # 启用四方连续贴图
         self.preview_size = QSizeF(0.2, 0.2)  # 预览窗口的初始大小
@@ -812,6 +824,12 @@ class FlowmapCanvas(QOpenGLWidget):
                 return
 
         if event.button() == Qt.LeftButton:
+            # 标记为鼠标输入
+            self.is_tablet_input = False
+            # 鼠标事件时重置为最大压力（速度影响会在绘制时动态调整）
+            self.current_pressure = 1.0
+            self.update_brush_from_pressure()
+            
             self.mouse_state = MouseState.DRAWING
             self.is_drawing = True
             self.is_erasing = False
@@ -822,6 +840,12 @@ class FlowmapCanvas(QOpenGLWidget):
             self.update()
             # 在鼠标按下时不发出flowmap_updated信号，只在释放时发出
         elif event.button() == Qt.RightButton:  # 新增右键擦除功能
+            # 标记为鼠标输入
+            self.is_tablet_input = False
+            # 鼠标事件时重置为最大压力
+            self.current_pressure = 1.0
+            self.update_brush_from_pressure()
+            
             self.mouse_state = MouseState.ERASING
             self.is_drawing = True
             self.is_erasing = True
@@ -1008,6 +1032,75 @@ class FlowmapCanvas(QOpenGLWidget):
             # 清除防重入标志
             self._in_release_event = False
 
+    def tabletEvent(self, event: QTabletEvent):
+        """处理数位板事件，获取笔压信息"""
+        # 标记为数位板输入
+        self.is_tablet_input = True
+        
+        # 获取笔压值 (0.0 - 1.0)
+        pressure = event.pressure()
+        self.current_pressure = max(0.01, pressure)  # 确保最小压力，避免完全无效果
+        
+        # 根据笔压更新笔刷参数
+        self.update_brush_from_pressure()
+        
+        # 根据事件类型处理绘制
+        if event.type() == QTabletEvent.TabletPress:
+            # 数位板按下，开始绘制
+            if event.button() == Qt.LeftButton:
+                self.mouse_state = MouseState.DRAWING
+                self.is_drawing = True
+                self.is_erasing = False
+                self.last_pos = event.pos()
+                self.drawingStarted.emit()
+                self.apply_brush(event.pos(), event.pos())
+                self.update()
+            elif event.button() == Qt.RightButton:
+                self.mouse_state = MouseState.ERASING
+                self.is_drawing = True
+                self.is_erasing = True
+                self.last_pos = event.pos()
+                self.drawingStarted.emit()
+                self.apply_brush(event.pos(), event.pos())
+                self.update()
+                
+        elif event.type() == QTabletEvent.TabletMove:
+            # 数位板移动，继续绘制
+            if self.is_drawing:
+                self.apply_brush(self.last_pos, event.pos())
+                self.last_pos = event.pos()
+                self.update()
+                
+        elif event.type() == QTabletEvent.TabletRelease:
+            # 数位板抬起，结束绘制
+            if self.is_drawing:
+                self.mouse_state = MouseState.IDLE
+                self.is_drawing = False
+                self.is_erasing = False
+                self.drawingFinished.emit()
+                self.update()
+        
+        # 接受事件，防止传递给鼠标事件处理
+        event.accept()
+    
+    def update_brush_from_pressure(self):
+        """根据当前笔压更新笔刷参数"""
+        # 只在数位板输入模式下影响大小
+        if self.pressure_affects_size and self.is_tablet_input:
+            # 笔压影响大小：使用可配置的最小值
+            size_range = 1.0 - self.pressure_size_min
+            size_factor = self.pressure_size_min + size_range * self.current_pressure
+            self.brush_radius = self.base_brush_radius * size_factor
+        else:
+            # 鼠标模式下保持基础大小
+            self.brush_radius = self.base_brush_radius
+        
+        if self.pressure_affects_strength:
+            # 笔压影响强度：使用可配置的最小值
+            strength_range = 1.0 - self.pressure_strength_min
+            strength_factor = self.pressure_strength_min + strength_range * self.current_pressure
+            self.brush_strength = self.base_brush_strength * strength_factor
+
     def apply_brush(self, last_widget_pos, current_widget_pos, explicit_flow_dir=None):
         """
         应用笔刷效果到纹理上，处理常规绘制和四方连续绘制
@@ -1090,18 +1183,51 @@ class FlowmapCanvas(QOpenGLWidget):
             # 检查流向量是否太小（避免过小移动产生的噪声）
             length_sq = flow_x**2 + flow_y**2
             min_length_sq = (0.1)**2  # 最小阈值
+            
+            # 在鼠标模式下，根据速度调整current_pressure来影响强度
+            if not self.is_tablet_input:
+                # 特殊处理：如果是第一个点（last_pos == current_pos），使用中等压力
+                if length_sq < min_length_sq:
+                    if last_widget_pos == current_widget_pos:
+                        self.current_pressure = 0
+                        
+                        # 避免除零错误
+                        flow_x = 0.0
+                        flow_y = 0.001
+                    else:
+                        # 移动距离太小，跳过绘制
+                        return
+                else:
+                    # 根据移动速度调整current_pressure
+                    # 计算原始速度因子 (0-1)
+                    raw_speed_factor = min(1.0, np.sqrt(length_sq) / 100.0)
+                    
+                    # 修正速度感应逻辑：快速绘制时压力大，慢速绘制时压力小
+                    if self.speed_sensitivity < 0.01:  # 接近0时，固定压力
+                        self.current_pressure = 1.0
+                    else:
+                        # 正确的映射：快速时压力大，慢速时压力小
+                        min_factor = (1.0 - self.speed_sensitivity) * 0.8  # 更激进的衰减
+                        self.current_pressure = min_factor + (1.0 - min_factor) * raw_speed_factor
+                
+                # 根据新的压力值更新笔刷强度
+                self.update_brush_from_pressure()
+            
+            # 处理流向向量标准化
             if length_sq < min_length_sq:
-                return
+                # 已在上面处理了第一个点的情况
+                pass
+            else:
 
-            # 根据移动速度调整笔刷强度
-            speed_factor = min(1.0, np.sqrt(length_sq) / 100.0)
-            speed_factor = speed_factor * self.speed_sensitivity + (1.0 - self.speed_sensitivity) * 0.5
-            adjusted_strength = self.brush_strength * speed_factor
-
-            # 标准化流向向量
-            length = np.sqrt(length_sq)
-            flow_x /= length
-            flow_y /= length
+                # 标准化流向向量
+                length = np.sqrt(length_sq)
+                if length > 1e-8:  # 避免除零错误
+                    flow_x /= length
+                    flow_y /= length
+                else:
+                    # 极小的移动，使用默认方向
+                    flow_x = 0.0
+                    flow_y = 0.01
 
             # 根据API模式和擦除状态计算流向颜色
             if self.is_erasing or self.mouse_state == MouseState.ERASING:
@@ -1113,8 +1239,7 @@ class FlowmapCanvas(QOpenGLWidget):
                 flow_color_r = np.clip((flow_x + 1.0) * 0.5, 0.0, 1.0)
                 flow_color_g = np.clip((flow_y + 1.0) * 0.5, 0.0, 1.0)
         else:
-            # 模糊模式：强度决定模糊程度
-            adjusted_strength = self.brush_strength
+            # 模糊模式：强度决定模糊程度（使用当前笔刷强度）
             # 模糊模式下不设置特定的流向颜色，而是通过对周围像素进行平均来实现模糊
             flow_color_r = 0.0  # 这个值会在模糊处理中被忽略
             flow_color_g = 0.0  # 这个值会在模糊处理中被忽略
@@ -1150,7 +1275,7 @@ class FlowmapCanvas(QOpenGLWidget):
         self.brush_data.max_y = max_y
         self.brush_data.flow_r = flow_color_r
         self.brush_data.flow_g = flow_color_g
-        self.brush_data.strength = adjusted_strength
+        self.brush_data.strength = self.brush_strength
         self.brush_data.needs_seamless = needs_seamless
 
         # 局部修改区域列表，用于跟踪需要更新的纹理区域
@@ -1160,13 +1285,13 @@ class FlowmapCanvas(QOpenGLWidget):
         try:
             # 应用主笔刷效果
             self.apply_brush_effect_optimized(min_x, max_x, min_y, max_y, center_x_tex, center_y_tex,
-                              radius_tex, flow_color_r, flow_color_g, adjusted_strength)
+                              radius_tex, flow_color_r, flow_color_g, self.brush_strength)
             modified_regions.append((min_x, min_y, max_x - min_x, max_y - min_y))
 
             # 只有在四方连续模式下且笔刷与边缘重叠时才应用四方连续效果
             if needs_seamless:
                 seamless_regions = self.apply_seamless_brush_all_directions_optimized(center_x_tex, center_y_tex, radius_tex,
-                                                flow_color_r, flow_color_g, adjusted_strength)
+                                                flow_color_r, flow_color_g, self.brush_strength)
                 modified_regions.extend(seamless_regions)
 
             # 更新GPU上的纹理数据

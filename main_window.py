@@ -533,9 +533,10 @@ class MainWindow(QMainWindow):
         # brush_radius
         self.param_registry.register(
             "brush_radius",
-            read_fn=lambda: int(c.brush_radius),
+            read_fn=lambda: int(c.base_brush_radius),  # 读取基础值
             apply_fn=lambda v, transient=False: (
-                setattr(c, "brush_radius", int(v)),
+                setattr(c, "base_brush_radius", int(v)),  # 设置基础值
+                setattr(c, "brush_radius", int(v)),  # 同步当前值
                 self.update_canvas_brush_radius(int(v)),
                 pm.update_brush_size_label(int(v)),
                 self._set_slider_value_no_signal(pm.get_control("brush_size_slider"), int(v))
@@ -545,9 +546,10 @@ class MainWindow(QMainWindow):
         # brush_strength (0~1)
         self.param_registry.register(
             "brush_strength",
-            read_fn=lambda: float(c.brush_strength),
+            read_fn=lambda: float(c.base_brush_strength),  # 读取基础值
             apply_fn=lambda v, transient=False: (
-                setattr(c, "brush_strength", float(v)),
+                setattr(c, "base_brush_strength", float(v)),  # 设置基础值
+                setattr(c, "brush_strength", float(v)),  # 同步当前值
                 pm.update_flow_strength_label(float(v)),
                 self._set_slider_value_no_signal(pm.get_control("flow_strength_slider"), int(round(float(v) * 100)))
             )
@@ -561,6 +563,30 @@ class MainWindow(QMainWindow):
                 setattr(c, "speed_sensitivity", float(v)),
                 pm.update_speed_sensitivity_label(float(v)),
                 self._set_slider_value_no_signal(pm.get_control("speed_sensitivity_slider"), int(round(float(v) * 100)))
+            )
+        )
+
+        # base_brush_radius (基础笔刷半径)
+        self.param_registry.register(
+            "base_brush_radius",
+            read_fn=lambda: float(c.base_brush_radius),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "base_brush_radius", float(v)),
+                setattr(c, "brush_radius", float(v)),  # 同步更新当前半径
+                pm.update_brush_radius_label(float(v)),
+                self._set_slider_value_no_signal(pm.get_control("brush_radius_slider"), int(round(float(v))))
+            )
+        )
+
+        # base_brush_strength (基础笔刷强度)
+        self.param_registry.register(
+            "base_brush_strength",
+            read_fn=lambda: float(c.base_brush_strength),
+            apply_fn=lambda v, transient=False: (
+                setattr(c, "base_brush_strength", float(v)),
+                setattr(c, "brush_strength", float(v)),  # 同步更新当前强度
+                pm.update_brush_strength_label(float(v)),
+                self._set_slider_value_no_signal(pm.get_control("brush_strength_slider"), int(round(float(v) * 100)))
             )
         )
 

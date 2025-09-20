@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import QOpenGLWidget
 from PyQt5.QtCore import Qt, QPoint, QTimer, QPointF, pyqtSignal as Signal
-from PyQt5.QtGui import QCursor
+from PyQt5.QtGui import QCursor, QTabletEvent
 from PyQt5.QtGui import QSurfaceFormat
 from OpenGL.GL import *
 from OpenGL.GL import shaders
@@ -563,6 +563,13 @@ class ThreeDViewport(QOpenGLWidget):
 
     def mousePressEvent(self, event):
         self._last_mouse = event.pos()
+        
+        # 鼠标事件时重置为最大压力，标记为鼠标输入
+        if hasattr(self, '_canvas') and self._canvas is not None:
+            self._canvas.is_tablet_input = False
+            self._canvas.current_pressure = 1.0
+            self._canvas.update_brush_from_pressure()
+            
         if event.button() == Qt.LeftButton:
             if (event.modifiers() & Qt.AltModifier) or not self.model_loaded:
                 # Alt+左键：旋转
@@ -746,6 +753,127 @@ class ThreeDViewport(QOpenGLWidget):
             # 非绘制状态下也显示3D笔刷光标
             self._show_brush_cursor(event.pos())
 
+    def tabletEvent(self, event: QTabletEvent):
+        """处理3D视口的数位板事件"""
+        if not hasattr(self, '_canvas') or self._canvas is None:
+            return
+            
+        # 获取笔压并更新画布，标记为数位板输入
+        pressure = event.pressure()
+        self._canvas.is_tablet_input = True
+        self._canvas.current_pressure = max(0.01, pressure)
+        self._canvas.update_brush_from_pressure()
+        
+        # 根据事件类型处理绘制
+        if event.type() == QTabletEvent.TabletPress:
+            self._last_mouse = event.pos()
+            if event.button() == Qt.LeftButton:
+                if not self.model_loaded:
+                    return
+                # 左键绘制
+                hit_info = self._raycast_full_hit_info(event.pos())
+                if hit_info is not None:
+                    self._is_painting = True
+                    self._is_erasing = False
+                    self._last_hit_uv = hit_info['uv']
+                    self._last_hit_world_pos = hit_info['world_pos']
+                    self._last_hit_triangle_idx = hit_info['triangle_idx']
+                    self._last_hit_barycentric = hit_info['barycentric']
+                    # 初始dab
+                    zero_dir = np.array([0.0, 0.0, 0.01], dtype=np.float32)
+                    self._invoke_canvas_brush_tangent_dir(hit_info, zero_dir)
+                    self.paint_started.emit()
+                    self._show_brush_cursor(event.pos())
+            elif event.button() == Qt.RightButton:
+                # 右键擦除
+                hit_info = self._raycast_full_hit_info(event.pos())
+                if hit_info is not None:
+                    self._is_painting = True
+                    self._is_erasing = True
+                    self._last_hit_uv = hit_info['uv']
+                    self._last_hit_world_pos = hit_info['world_pos']
+                    self._last_hit_triangle_idx = hit_info['triangle_idx']
+                    self._last_hit_barycentric = hit_info['barycentric']
+                    # 初始擦除点
+                    self._invoke_canvas_erase(hit_info['uv'], hit_info['uv'])
+                    try:
+                        self.paint_started.emit()
+                    except Exception:
+                        pass
+                    self._show_brush_cursor(event.pos())
+                    
+        elif event.type() == QTabletEvent.TabletMove:
+            self._last_mouse = event.pos()
+            # 处理绘制移动
+            if self._is_painting and not self._is_erasing:
+                hit_info = self._raycast_full_hit_info(event.pos())
+                if hit_info is not None and self._last_hit_world_pos is not None:
+                    world_direction = hit_info['world_pos'] - self._last_hit_world_pos
+                    self._invoke_canvas_brush_tangent_dir(hit_info, world_direction)
+                    # 更新状态
+                    self._last_hit_uv = hit_info['uv']
+                    self._last_hit_world_pos = hit_info['world_pos']
+                    self._last_hit_triangle_idx = hit_info['triangle_idx']
+                    self._last_hit_barycentric = hit_info['barycentric']
+                    self._show_brush_cursor(event.pos())
+                    try:
+                        if hasattr(self._canvas, 'update'):
+                            self._canvas.update()
+                    except Exception:
+                        pass
+                    self.update()
+            elif self._is_painting and self._is_erasing:
+                # 擦除移动
+                hit_info = self._raycast_full_hit_info(event.pos())
+                if hit_info is not None:
+                    last_uv = self._last_hit_uv if self._last_hit_uv is not None else hit_info['uv']
+                    self._invoke_canvas_erase(last_uv, hit_info['uv'])
+                    # 更新状态
+                    self._last_hit_uv = hit_info['uv']
+                    self._last_hit_world_pos = hit_info['world_pos']
+                    self._last_hit_triangle_idx = hit_info['triangle_idx']
+                    self._last_hit_barycentric = hit_info['barycentric']
+                    self._show_brush_cursor(event.pos())
+                    try:
+                        if hasattr(self._canvas, 'update'):
+                            self._canvas.update()
+                    except Exception:
+                        pass
+                    self.update()
+            else:
+                # 非绘制状态下显示光标
+                self._show_brush_cursor(event.pos())
+                
+        elif event.type() == QTabletEvent.TabletRelease:
+            if event.button() == Qt.LeftButton:
+                if self._is_painting:
+                    self._is_painting = False
+                    self._last_hit_uv = None
+                    self._last_hit_world_pos = None
+                    self._last_hit_triangle_idx = None
+                    self._last_hit_barycentric = None
+                    try:
+                        self.paint_finished.emit()
+                    except Exception:
+                        pass
+                    self._hide_brush_cursor()
+            elif event.button() == Qt.RightButton:
+                if self._is_painting and self._is_erasing:
+                    self._is_painting = False
+                    self._is_erasing = False
+                    self._last_hit_uv = None
+                    self._last_hit_world_pos = None
+                    self._last_hit_triangle_idx = None
+                    self._last_hit_barycentric = None
+                    try:
+                        self.paint_finished.emit()
+                    except Exception:
+                        pass
+                    self._hide_brush_cursor()
+        
+        # 接受事件，防止传递给鼠标事件处理
+        event.accept()
+
     def wheelEvent(self, event):
         delta = event.angleDelta().y() / 120.0
         scale = 1.0 - delta * 0.1
@@ -839,17 +967,20 @@ class ThreeDViewport(QOpenGLWidget):
             canvas_tex_w, canvas_tex_h = getattr(self._canvas, 'texture_size', (1024, 1024))
             pixel_movement_length = uv_movement_length * max(canvas_tex_w, canvas_tex_h)
             
-            # 应用与2D相同的速度感应计算
-            speed_factor = min(1.0, pixel_movement_length / 100.0)
-            speed_sensitivity = getattr(self._canvas, 'speed_sensitivity', 0.7)
-            speed_factor = speed_factor * speed_sensitivity + (1.0 - speed_sensitivity) * 0.5
-            
-            # 临时保存原始笔刷强度
-            original_strength = getattr(self._canvas, 'brush_strength', 0.5)
-            adjusted_strength = original_strength * speed_factor
-            
-            # 临时修改画布的笔刷强度
-            self._canvas.brush_strength = adjusted_strength
+            # 在鼠标模式下，应用与2D相同的速度感应计算
+            if not getattr(self._canvas, 'is_tablet_input', False):
+                raw_speed_factor = min(1.0, pixel_movement_length / 100.0)
+                speed_sensitivity = getattr(self._canvas, 'speed_sensitivity', 0.7)
+                
+                # 改进的压感算法：与2D保持一致
+                if speed_sensitivity < 0.01:  # 接近0时，固定压力
+                    self._canvas.current_pressure = 1.0
+                else:
+                    min_factor = (1.0 - speed_sensitivity) * 0.8  # 更激进的衰减
+                    self._canvas.current_pressure = min_factor + (1.0 - min_factor) * raw_speed_factor
+                
+                # 根据新的压力值更新笔刷强度
+                self._canvas.update_brush_from_pressure()
             
             # 将UV转换成 2D画布的 scene 坐标（scene_y 与 2D 定义保持同向，上为正）
             last_scene = QPointF(float(last_uv[0]), float(last_uv[1]))
@@ -859,9 +990,6 @@ class ThreeDViewport(QOpenGLWidget):
             
             # 调用2D画布的绘制方法
             self._canvas.apply_brush(last_widget, curr_widget)
-            
-            # 恢复原始笔刷强度
-            self._canvas.brush_strength = original_strength
             
             self._canvas.update()
         except Exception as e:
@@ -958,15 +1086,20 @@ class ThreeDViewport(QOpenGLWidget):
             tex_w, tex_h = getattr(self._canvas, 'texture_size', (1024, 1024))
             pixel_movement_length = uv_movement_length * max(tex_w, tex_h)
             
-            # 应用与2D相同的速度感应计算
-            speed_factor = min(1.0, pixel_movement_length / 100.0)
-            speed_sensitivity = getattr(self._canvas, 'speed_sensitivity', 0.7)
-            speed_factor = speed_factor * speed_sensitivity + (1.0 - speed_sensitivity) * 0.5
-
-            # 临时调强度
-            original_strength = getattr(self._canvas, 'brush_strength', 0.5)
-            adjusted_strength = original_strength * speed_factor
-            self._canvas.brush_strength = adjusted_strength
+            # 在鼠标模式下，应用与2D相同的速度感应计算
+            if not getattr(self._canvas, 'is_tablet_input', False):
+                raw_speed_factor = min(1.0, pixel_movement_length / 100.0)
+                speed_sensitivity = getattr(self._canvas, 'speed_sensitivity', 0.7)
+                
+                # 改进的压感算法：与2D保持一致
+                if speed_sensitivity < 0.01:  # 接近0时，固定压力
+                    self._canvas.current_pressure = 1.0
+                else:
+                    min_factor = (1.0 - speed_sensitivity) * 0.8  # 更激进的衰减
+                    self._canvas.current_pressure = min_factor + (1.0 - min_factor) * raw_speed_factor
+                
+                # 根据新的压力值更新笔刷强度
+                self._canvas.update_brush_from_pressure()
 
             # 通过极短的UV段触发2D画布（避免大跨度造成缝隙）
             # 这里我们仍然使用UV坐标进行绘制，但flow方向已经在切线空间中正确编码
@@ -978,9 +1111,6 @@ class ThreeDViewport(QOpenGLWidget):
             # 使用切线空间计算的流向进行无缝绘制
             # 这是解决UV接缝问题的关键！
             self._canvas.apply_brush(last_widget, curr_widget, explicit_flow_dir=flow_dir_2d)
-
-            # 恢复强度
-            self._canvas.brush_strength = original_strength
 
         except Exception as e:
             print(f"invoke_canvas_brush_tangent_dir error: {e}")
