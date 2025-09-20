@@ -870,17 +870,29 @@ class FlowmapCanvas(QOpenGLWidget):
                 # 水平移动更明显 - 只调整笔刷大小
                 scale_factor = 0.1  # 调整灵敏度系数
                 new_radius = self.initial_brush_radius + delta_x * scale_factor
-                self.brush_radius = max(5.0, min(200.0, new_radius))  # 限制笔刷大小范围
+                new_radius = max(5.0, min(200.0, new_radius))  # 限制笔刷大小范围
+                
+                # 同时更新当前值和基础值
+                self.brush_radius = new_radius
+                self.base_brush_radius = new_radius
+                
                 # 保持强度不变
                 self.brush_strength = self.initial_brush_strength
+                self.base_brush_strength = self.initial_brush_strength
             else:
                 # 垂直移动更明显 - 只调整流动强度
                 # 向上减小，向下增加，从初始值开始调整
                 scale_factor = 0.005  # 调整灵敏度系数
                 new_strength = self.initial_brush_strength - delta_y * scale_factor
-                self.brush_strength = max(0.01, min(1.0, new_strength))  # 限制强度范围
+                new_strength = max(0.01, min(1.0, new_strength))  # 限制强度范围
+                
+                # 同时更新当前值和基础值
+                self.brush_strength = new_strength
+                self.base_brush_strength = new_strength
+                
                 # 保持半径不变
                 self.brush_radius = self.initial_brush_radius
+                self.base_brush_radius = self.initial_brush_radius
 
             # 发出笔刷属性变化信号
             self.brush_properties_changed.emit(self.brush_radius, self.brush_strength)

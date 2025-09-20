@@ -662,7 +662,9 @@ class ThreeDViewport(QOpenGLWidget):
                 new_radius = max(5.0, min(200.0, float(new_radius)))
                 try:
                     if hasattr(self, '_canvas'):
+                        # 同时更新当前值和基础值
                         self._canvas.brush_radius = new_radius
+                        self._canvas.base_brush_radius = new_radius
                         self._brush_cursor.set_radius(int(new_radius))
                         self._canvas.brush_properties_changed.emit(new_radius, float(getattr(self._canvas, 'brush_strength', 0.5)))
                 except Exception:
@@ -673,7 +675,9 @@ class ThreeDViewport(QOpenGLWidget):
                 new_strength = max(0.01, min(1.0, float(new_strength)))
                 try:
                     if hasattr(self, '_canvas'):
+                        # 同时更新当前值和基础值
                         self._canvas.brush_strength = new_strength
+                        self._canvas.base_brush_strength = new_strength
                         self._canvas.brush_properties_changed.emit(float(getattr(self._canvas, 'brush_radius', 40.0)), new_strength)
                 except Exception:
                     pass
