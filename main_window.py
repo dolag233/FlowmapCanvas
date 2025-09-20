@@ -654,29 +654,6 @@ class MainWindow(QMainWindow):
             )
         )
 
-        # invert R channel (bool)
-        self.param_registry.register(
-            "invert_r_channel",
-            read_fn=lambda: bool(app_settings.invert_r_channel),
-            apply_fn=lambda v, transient=False: (
-                app_settings.set_invert_r_channel(bool(v)),
-                app_settings.save_settings(),
-                self._set_checkbox_checked_no_signal(pm.get_control("invert_r_checkbox"), bool(v)),
-                self.panel_manager._update_orientation_label()
-            )
-        )
-
-        # invert G channel (bool)
-        self.param_registry.register(
-            "invert_g_channel",
-            read_fn=lambda: bool(app_settings.invert_g_channel),
-            apply_fn=lambda v, transient=False: (
-                app_settings.set_invert_g_channel(bool(v)),
-                app_settings.save_settings(),
-                self._set_checkbox_checked_no_signal(pm.get_control("invert_g_checkbox"), bool(v)),
-                self.panel_manager._update_orientation_label()
-            )
-        )
 
         # UV overlay params
         self.param_registry.register(
