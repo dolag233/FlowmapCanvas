@@ -1207,8 +1207,9 @@ class FlowmapCanvas(QOpenGLWidget):
         if explicit_flow_dir is not None:
             # 使用3D无缝绘制提供的显式flow方向（已经在切线空间中正确编码）
             # 修改：与2D新的符号约定保持一致（向右为正）
-            flow_x = explicit_flow_dir[0] * 100.0   # 向右移动表示材质向右流动
-            flow_y = -explicit_flow_dir[1] * 100.0  # Y轴保持原有的负号约定
+            # 修复强度问题：移除100倍缩放，直接使用切线空间方向
+            flow_x = explicit_flow_dir[0]   # 直接使用归一化的切线空间方向
+            flow_y = -explicit_flow_dir[1]  # Y轴保持原有的负号约定
         else:
             # 传统方式：基于两点间的差值计算
             delta_x_scene = current_pos_scene.x() - last_pos_scene.x()

@@ -588,7 +588,8 @@ class ThreeDViewport(QOpenGLWidget):
                     self._last_hit_barycentric = hit_info['barycentric']
                     # 初始dab，使用微小默认方向
                     zero_dir = np.array([0.0, 0.0, 0.01], dtype=np.float32)
-                    self._invoke_canvas_brush_tangent_dir(hit_info, zero_dir)
+                    # 不立即绘制，等待第一次鼠标移动
+                    # self._invoke_canvas_brush_tangent_dir(hit_info, zero_dir)
                     self.paint_started.emit()
                     self._show_brush_cursor(event.pos())
         elif event.button() == Qt.MiddleButton:
@@ -605,7 +606,7 @@ class ThreeDViewport(QOpenGLWidget):
                 self._last_hit_triangle_idx = hit_info['triangle_idx']
                 self._last_hit_barycentric = hit_info['barycentric']
                 # 初始擦除点
-                self._invoke_canvas_erase(hit_info['uv'], hit_info['uv'])
+                # self._invoke_canvas_erase(hit_info['uv'], hit_info['uv'])
                 try:
                     self.paint_started.emit()
                 except Exception:
@@ -694,7 +695,21 @@ class ThreeDViewport(QOpenGLWidget):
             hit_info = self._raycast_full_hit_info(event.pos())
             if hit_info is not None and self._last_hit_world_pos is not None:
                 world_direction = hit_info['world_pos'] - self._last_hit_world_pos
+                # 在3D绘制中禁用速度感应的强度调整，避免双重强度应用
+                # 保存当前状态
+                original_is_tablet_input = getattr(self._canvas, 'is_tablet_input', False)
+                original_pressure = getattr(self._canvas, 'current_pressure', 1.0)
+                
+                # 临时设置为鼠标模式，避免速度感应影响强度
+                self._canvas.is_tablet_input = False
+                self._canvas.current_pressure = 1.0
+                
                 self._invoke_canvas_brush_tangent_dir(hit_info, world_direction)
+                
+                # 恢复原始状态
+                self._canvas.is_tablet_input = original_is_tablet_input
+                self._canvas.current_pressure = original_pressure
+                
                 # 更新状态
                 self._last_hit_uv = hit_info['uv']
                 self._last_hit_world_pos = hit_info['world_pos']
@@ -786,7 +801,8 @@ class ThreeDViewport(QOpenGLWidget):
                     self._last_hit_barycentric = hit_info['barycentric']
                     # 初始dab
                     zero_dir = np.array([0.0, 0.0, 0.01], dtype=np.float32)
-                    self._invoke_canvas_brush_tangent_dir(hit_info, zero_dir)
+                    # 不立即绘制，等待第一次笔移动
+                    # self._invoke_canvas_brush_tangent_dir(hit_info, zero_dir)
                     self.paint_started.emit()
                     self._show_brush_cursor(event.pos())
             elif event.button() == Qt.RightButton:
@@ -800,7 +816,7 @@ class ThreeDViewport(QOpenGLWidget):
                     self._last_hit_triangle_idx = hit_info['triangle_idx']
                     self._last_hit_barycentric = hit_info['barycentric']
                     # 初始擦除点
-                    self._invoke_canvas_erase(hit_info['uv'], hit_info['uv'])
+                    # self._invoke_canvas_erase(hit_info['uv'], hit_info['uv'])
                     try:
                         self.paint_started.emit()
                     except Exception:
@@ -984,8 +1000,11 @@ class ThreeDViewport(QOpenGLWidget):
                     min_factor = (1.0 - speed_sensitivity) * 0.8  # 更激进的衰减
                     self._canvas.current_pressure = min_factor + (1.0 - min_factor) * raw_speed_factor
                 
-                # 根据新的压力值更新笔刷强度
+                # 保存原始强度值
+                original_strength = getattr(self._canvas, 'brush_strength', 0.5)
                 self._canvas.update_brush_from_pressure()
+                # 恢复原始强度值
+                self._canvas.brush_strength = original_strength
             
             # 将UV转换成 2D画布的 scene 坐标（scene_y 与 2D 定义保持同向，上为正）
             last_scene = QPointF(float(last_uv[0]), float(last_uv[1]))
